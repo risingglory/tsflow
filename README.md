@@ -2,45 +2,18 @@
 
 A modern, interactive network flow visualizer for Tailscale networks, built with Go and D3.js. TSFlow provides a comprehensive web interface to visualize, analyze, and explore network traffic flows in your Tailscale network (tailnet).
 
-![TSFlow Interface](https://via.placeholder.com/800x400?text=TSFlow+Network+Visualization)
+![TSFlow Interface](tsflow.gif)
 
 ## ✨ Features
 
-### 🌐 **Interactive Network Visualization**
-- **Force-directed topology** - Dynamic network graphs with real-time positioning
-- **Circular layout** - Organized ring view of your tailnet devices
-- **Grid layout** - Structured arrangement for systematic analysis
-- **Multiple view modes** - Switch between visualization styles seamlessly
-
-### 📊 **Advanced Flow Analysis**
-- **Real-time traffic monitoring** - Live bandwidth and packet analysis
-- **Protocol breakdown** - TCP, UDP, ICMP flow categorization
-- **Flow aggregation** - Smart grouping of related network flows
-- **Traffic volume visualization** - Bandwidth-based link thickness scaling
-
-### 🎯 **Smart Filtering & Search**
-- **Dynamic search** - Advanced query syntax (`protocol:tcp`, `traffic:>10mb`, `tag:exit-node`)
-- **Device-centric views** - Focus on specific machines and their connections
-- **External IP filtering** - Show/hide connections to external networks
-- **Protocol filters** - Filter by TCP, UDP, ICMP, or custom protocols
-
-### ⏰ **Flexible Time Analysis**
-- **Time range selection** - From 1 hour to 7 days of historical data
-- **Custom date ranges** - Pick specific start and end times
-- **Performance optimization** - Smart limits for large datasets
-- **Real-time updates** - Manual refresh with loading indicators
-
-### 🎨 **Modern Interface**
-- **Tailscale-inspired design** - Authentic dark theme matching Tailscale
-- **Responsive layout** - Works on desktop, tablet, and mobile
-- **Collapsible sidebar** - Maximizes visualization space
-- **Interactive controls** - Zoom, pan, and drag functionality
-
-### 📈 **Comprehensive Analytics**
-- **Device status monitoring** - Online/offline state tracking
-- **Traffic statistics** - Throughput, packet counts, and flow summaries
-- **Connection mapping** - Source-destination relationship analysis
-- **Export capabilities** - JSON data export for external analysis
+- 🌐 **Interactive Visualization** - Force-directed, circular, and grid network layouts
+- 📊 **Traffic Analysis** - Real-time bandwidth monitoring and protocol breakdown
+- 🎯 **Smart Search** - Advanced filtering (`protocol:tcp`, `traffic:>10mb`, `tag:exit-node`)
+- ⏰ **Time Range Control** - Flexible historical data exploration (1 hour to 7 days)
+- 🎨 **Modern UI** - Tailscale-inspired dark theme with responsive design
+- 📈 **Device Analytics** - Online/offline status, traffic stats, and connection mapping
+- 💾 **Data Export** - JSON export for external analysis
+- 🔍 **Zoom & Pan** - Interactive controls with device-centric views
 
 ## 🚀 Quick Start
 
