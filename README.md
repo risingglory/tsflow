@@ -37,7 +37,7 @@ go build -o tsflow && ./tsflow -token "INSERT" -tailnet "INSERT"
 docker run -p 8080:8080 \
   -e TAILSCALE_ACCESS_TOKEN="INSERT" \
   -e TAILSCALE_TAILNET="INSERT" \
-  tsflow:latest
+  ghcr.io/rajsinghtech/tsflow:latest
 ```
 
 ### Configuration
@@ -161,7 +161,7 @@ Communication through subnet routers to access local networks and resources.
 version: '3.8'
 services:
   tsflow:
-    build: .
+    image: ghcr.io/rajsinghtech/tsflow:latest
     ports:
       - "8080:8080"
     environment:
@@ -181,14 +181,11 @@ docker-compose up -d
 
 ### Standalone Docker
 ```bash
-# Build
-docker build -t tsflow .
-
-# Run  
+# Run latest version
 docker run -d \
   --name tsflow \
   -p 8080:8080 \
   -e TAILSCALE_ACCESS_TOKEN="your-token" \
   -e TAILSCALE_TAILNET="your-tailnet" \
-  tsflow:latest
+  ghcr.io/rajsinghtech/tsflow:latest
 ```
