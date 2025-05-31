@@ -1,0 +1,1791 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TSFlow - Tailnet Flow Visualizer</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Tailscale Authentic Dark Theme */
+        body { background: #0f172a; color: #f8fafc; }
+        .tailscale-header { background: #1e293b; border-bottom: 1px solid #334155; }
+        .tailscale-primary { background: #3b82f6; }
+        .tailscale-secondary { background: #6366f1; }
+        .node { cursor: pointer; }
+        .external-node { cursor: pointer; }
+        .external-node:hover { transform: scale(1.05); }
+        .flow-line { opacity: 0.9; }
+        .flow-line.tcp { stroke: #3b82f6; }
+        .flow-line.udp { stroke: #10b981; }
+        .flow-line.mixed { stroke: #8b5cf6; }
+        .flow-line:hover { opacity: 1; }
+        .sidebar { 
+            background: #1e293b; 
+            border-right: 1px solid #334155; 
+            transition: all 0.3s ease;
+            overflow: hidden;
+            min-width: 0;
+        }
+        .sidebar.collapsed { 
+            width: 0 !important; 
+            min-width: 0 !important;
+            transform: translateX(-100%);
+        }
+        .main-content {
+            transition: all 0.3s ease;
+            flex: 1;
+            min-width: 0;
+        }
+        .error-message { background: #7f1d1d; border: 1px solid #dc2626; color: #fca5a5; }
+        .warning-message { background: #92400e; border: 1px solid #f59e0b; color: #fde68a; }
+        .search-bar { background: #1e293b; border-bottom: 1px solid #334155; }
+        .tag-badge { 
+            background: #1e40af; 
+            color: #dbeafe; 
+            border: 1px solid #3b82f6;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 60px;
+            display: inline-block;
+            font-size: 10px;
+            line-height: 1.2;
+        }
+        .machine-card { 
+            background: #334155; 
+            border: 1px solid #475569; 
+            transition: all 0.2s;
+            color: #f8fafc;
+        }
+        .machine-card:hover { border-color: #3b82f6; background: #475569; }
+        .machine-card.online { border-color: #10b981; }
+        .machine-card.selected { border-color: #3b82f6; background: #1e3a8a; }
+        .external-ip-card { 
+            background: #7c2d12; 
+            border: 1px solid #ea580c; 
+            color: #fed7aa;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .external-ip-card:hover { background: #9a3412; border-color: #f97316; }
+        .connected-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; flex-shrink: 0; }
+        .disconnected-dot { width: 8px; height: 8px; background: #64748b; border-radius: 50%; flex-shrink: 0; }
+        input, select { background: #334155; border: 1px solid #475569; color: #f8fafc; }
+        input:focus, select:focus { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; outline: none; }
+        button { transition: all 0.2s; }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-primary:hover { background: #2563eb; }
+        .section-header { color: #94a3b8; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+        
+        /* Responsive design */
+        @media (max-width: 1024px) {
+            .sidebar { width: 280px; }
+        }
+        @media (max-width: 768px) {
+            .sidebar { width: 260px; }
+            .search-bar { padding: 1rem; }
+        }
+        @media (max-width: 640px) {
+            .sidebar.collapsed { transform: translateX(-100%); }
+        }
+    </style>
+</head>
+  <body>
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <div id="sidebar" class="w-80 sidebar overflow-y-auto">
+            <div class="p-4">
+                <!-- Sidebar Header -->
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center space-x-2">
+                        <svg class="w-6 h-6 text-blue-400" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2L2 7v10c0 5.55 3.84 9.74 9 11 5.16-1.26 9-5.45 9-11V7l-10-5z"/>
+                        </svg>
+                        <h2 class="text-lg font-semibold text-slate-200">TSFlow</h2>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button id="refreshBtn" class="p-2 hover:bg-slate-600 rounded transition-all" title="Refresh Data">
+                            <i class="fas fa-sync-alt text-slate-300"></i>
+                        </button>
+                        <button id="collapseSidebar" class="p-2 hover:bg-slate-600 rounded transition-all">
+                            <i class="fas fa-chevron-left text-slate-300"></i>
+                        </button>
+                    </div>
+                </div>
+                <!-- Time Range Selector -->
+                <div class="mb-4">
+                    <h3 class="section-header mb-2">Time Range</h3>
+                    <div class="space-y-2">
+                        <div class="grid grid-cols-2 gap-1">
+                            <button class="time-preset bg-slate-600 hover:bg-slate-500 text-slate-100 px-2 py-1 rounded text-xs transition-all border border-slate-500" data-range="1h">1h</button>
+                            <button class="time-preset bg-slate-600 hover:bg-slate-500 text-slate-100 px-2 py-1 rounded text-xs transition-all border border-slate-500" data-range="6h">6h</button>
+                            <button class="time-preset bg-slate-600 hover:bg-slate-500 text-slate-100 px-2 py-1 rounded text-xs transition-all border border-slate-500" data-range="24h">24h</button>
+                            <button class="time-preset bg-slate-600 hover:bg-slate-500 text-slate-100 px-2 py-1 rounded text-xs transition-all border border-slate-500" data-range="7d">7d</button>
+                        </div>
+                        <div class="space-y-1">
+                            <input type="datetime-local" id="startTime" class="w-full px-2 py-1 text-xs rounded">
+                            <input type="datetime-local" id="endTime" class="w-full px-2 py-1 text-xs rounded">
+                        </div>
+                        <button id="applyTimeRange" class="w-full btn-primary px-3 py-1 rounded text-xs">
+                            Apply
+                        </button>
+                    </div>
+                </div>
+
+
+
+                <!-- View Mode -->
+                <div class="mb-4">
+                    <h3 class="section-header mb-2">Layout</h3>
+                    <div class="space-y-1">
+                        <label class="flex items-center space-x-2">
+                            <input type="radio" name="viewMode" value="topology" checked class="text-blue-500">
+                            <span class="text-xs text-slate-300">Force</span>
+                        </label>
+                        <label class="flex items-center space-x-2">
+                            <input type="radio" name="viewMode" value="circular" class="text-blue-500">
+                            <span class="text-xs text-slate-300">Circular</span>
+                        </label>
+                        <label class="flex items-center space-x-2">
+                            <input type="radio" name="viewMode" value="grid" class="text-blue-500">
+                            <span class="text-xs text-slate-300">Grid</span>
+                        </label>
+                    </div>
+                </div>
+
+
+
+                <!-- Machines List -->
+                <div class="mb-4">
+                    <h3 class="section-header mb-2">Machines</h3>
+                    <div id="devicesList" class="space-y-1 max-h-80 overflow-y-auto">
+                        <!-- Machines will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Selected Machine Details -->
+                <div id="deviceDetails" class="hidden">
+                    <h3 class="section-header mb-2">Details</h3>
+                    <div id="deviceInfo" class="space-y-1">
+                        <!-- Machine details will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content flex flex-col">
+            <!-- Dynamic Search Bar -->
+            <div class="search-bar px-6 py-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center space-x-4">
+                        <button id="expandSidebar" class="p-2 rounded hover:bg-slate-600 transition-all hidden text-slate-300" title="Show Control Panel">
+                            <i class="fas fa-bars"></i>
+                        </button>
+                        <h2 class="text-xl font-semibold text-slate-200">Tailnet Flow Map</h2>
+                        <div class="flex items-center space-x-2 text-sm text-slate-400">
+                            <span id="deviceCount">0 machines</span>
+                            <span>•</span>
+                            <span id="flowCount">0 flows</span>
+                            <span>•</span>
+                            <span id="tailnetThroughput" class="text-blue-400 font-medium">0 B/s</span>
+                            <span>•</span>
+                            <span id="loadTime" class="text-xs">--</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button id="pauseSimulation" class="p-2 rounded hover:bg-slate-600 transition-all text-slate-300" title="Pause/Resume Animation">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button id="zoomIn" class="p-2 rounded hover:bg-slate-600 transition-all text-slate-300">
+                            <i class="fas fa-search-plus"></i>
+                        </button>
+                        <button id="zoomOut" class="p-2 rounded hover:bg-slate-600 transition-all text-slate-300">
+                            <i class="fas fa-search-minus"></i>
+                        </button>
+                        <button id="resetZoom" class="p-2 rounded hover:bg-slate-600 transition-all text-slate-300">
+                            <i class="fas fa-compress-arrows-alt"></i>
+                        </button>
+                        <button id="exportData" class="btn-primary px-4 py-2 rounded">
+                            <i class="fas fa-download mr-2"></i>Export Data
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Dynamic Search/Filter Bar -->
+                <div class="flex items-center space-x-4">
+                    <div class="flex-1 relative">
+                        <input type="text" id="dynamicSearch" placeholder="Search machines, IPs, protocols, tags... (e.g., 'protocol:tcp', 'tag:exit-node', 'traffic:>10mb')" 
+                               class="w-full px-4 py-2 pl-10 rounded-lg">
+                        <i class="fas fa-search absolute left-3 top-3 text-slate-400"></i>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <select id="quickFilterProtocol" class="px-3 py-2 rounded text-sm">
+                            <option value="">All Protocols</option>
+                            <option value="TCP">TCP</option>
+                            <option value="UDP">UDP</option>
+                            <option value="ICMP">ICMP</option>
+                        </select>
+                        <select id="quickFilterTraffic" class="px-3 py-2 rounded text-sm">
+                            <option value="0">All Traffic</option>
+                            <option value="1">1+ MB</option>
+                            <option value="10">10+ MB</option>
+                            <option value="100">100+ MB</option>
+                            <option value="1000">1+ GB</option>
+                        </select>
+                        <label class="flex items-center space-x-2 px-3 py-2 border border-slate-600 rounded hover:bg-slate-600 cursor-pointer">
+                            <input type="checkbox" id="hideExternalIPs" class="text-blue-500">
+                            <span class="text-sm text-slate-300">Hide External IPs</span>
+                        </label>
+                        <button id="clearAllFilters" class="px-3 py-2 text-sm text-slate-300 hover:text-slate-100 border border-slate-600 rounded hover:bg-slate-600">
+                            Clear
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Active Filters Display -->
+                <div id="activeFilters" class="mt-2 flex flex-wrap gap-2 hidden">
+                    <!-- Active filter tags will appear here -->
+                </div>
+            </div>
+
+            <!-- Error/Warning Messages -->
+            <div id="messageArea" class="hidden px-6 py-3">
+                <!-- Messages will be displayed here -->
+            </div>
+
+            <!-- Visualization Area -->
+            <div class="flex-1 relative overflow-hidden">
+                <div id="loading" class="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75 z-10">
+                    <div class="text-center">
+                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                        <p class="text-gray-600" id="loadingMessage">Loading Tailnet data...</p>
+                        <div class="mt-2">
+                            <button id="cancelLoad" class="text-sm text-red-600 hover:text-red-700 underline">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+                <svg id="networkMap" class="w-full h-full"></svg>
+            </div>
+
+            <!-- Flow Details Panel -->
+            <div id="flowDetails" class="hidden bg-white border-t border-gray-200 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-800">Flow Details</h3>
+                    <button id="closeFlowDetails" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div id="flowInfo" class="grid grid-cols-2 gap-4">
+                    <!-- Flow details will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script>
+        class TSFlowApp {
+            constructor() {
+                this.networkData = null;
+                this.selectedDevice = null;
+                this.filteredFlows = [];
+                this.aggregatedFlows = [];
+                this.zoom = null;
+                this.svg = null;
+                this.simulation = null;
+                this.abortController = null;
+                this.isSimulationPaused = false;
+                this.maxNodes = 50;
+                this.maxFlows = 500;
+                this.currentViewMode = 'topology';
+                this.minTrafficMB = 0;
+                this.focusedDevice = null;
+                this.isSimulationStable = false;
+                this.searchQuery = '';
+                this.quickProtocol = '';
+                this.quickTrafficMB = 0;
+                this.hideExternalIPs = false;
+                
+                this.initializeApp();
+            }
+
+            initializeApp() {
+                this.setupEventListeners();
+                this.setupD3Visualization();
+                
+
+                const now = new Date();
+                const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+                document.getElementById('endTime').value = this.formatDateTimeLocal(now);
+                document.getElementById('startTime').value = this.formatDateTimeLocal(oneHourAgo);
+                
+
+                this.loadNetworkData();
+            }
+
+            setupEventListeners() {
+                document.querySelectorAll('.time-preset').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const range = e.target.dataset.range;
+                        this.setTimeRange(range);
+                    });
+                });
+
+                document.getElementById('applyTimeRange').addEventListener('click', () => {
+                    this.loadNetworkData();
+                });
+
+                document.getElementById('refreshBtn').addEventListener('click', () => {
+                    this.loadNetworkData();
+                });
+
+                document.getElementById('cancelLoad').addEventListener('click', () => {
+                    this.cancelLoad();
+                });
+
+
+
+                document.querySelectorAll('input[name="viewMode"]').forEach(radio => {
+                    radio.addEventListener('change', (e) => {
+                        this.currentViewMode = e.target.value;
+                        this.renderVisualization();
+                    });
+                });
+
+                document.getElementById('dynamicSearch').addEventListener('input', (e) => {
+                    this.searchQuery = e.target.value;
+                    this.applyDynamicFilters();
+                });
+
+                document.getElementById('quickFilterProtocol').addEventListener('change', (e) => {
+                    this.quickProtocol = e.target.value;
+                    this.applyDynamicFilters();
+                });
+                
+                document.getElementById('quickFilterTraffic').addEventListener('change', (e) => {
+                    this.quickTrafficMB = parseInt(e.target.value);
+                    this.applyDynamicFilters();
+                });
+
+                document.getElementById('hideExternalIPs').addEventListener('change', (e) => {
+                    this.hideExternalIPs = e.target.checked;
+                    this.applyDynamicFilters();
+                });
+
+                document.getElementById('clearAllFilters').addEventListener('click', () => {
+                    this.clearAllDynamicFilters();
+                });
+
+                document.getElementById('collapseSidebar').addEventListener('click', () => {
+                    this.toggleSidebar(false);
+                });
+                
+                document.getElementById('expandSidebar').addEventListener('click', () => {
+                    this.toggleSidebar(true);
+                });
+
+                document.getElementById('pauseSimulation').addEventListener('click', () => {
+                    this.toggleSimulation();
+                });
+
+                document.getElementById('zoomIn').addEventListener('click', () => {
+                    this.svg.transition().duration(300).call(this.zoom.scaleBy, 1.5);
+                });
+                
+                document.getElementById('zoomOut').addEventListener('click', () => {
+                    this.svg.transition().duration(300).call(this.zoom.scaleBy, 0.75);
+                });
+                
+                document.getElementById('resetZoom').addEventListener('click', () => {
+                    this.svg.transition().duration(500).call(this.zoom.transform, d3.zoomIdentity);
+                });
+
+                document.getElementById('exportData').addEventListener('click', () => {
+                    this.exportTailnetData();
+                });
+
+                document.getElementById('closeFlowDetails').addEventListener('click', () => {
+                    document.getElementById('flowDetails').classList.add('hidden');
+                });
+            }
+
+            setupD3Visualization() {
+                const svg = d3.select("#networkMap");
+                this.svg = svg;
+                
+
+                this.zoom = d3.zoom()
+                    .scaleExtent([0.1, 10])
+                    .on("zoom", (event) => {
+                        svg.select(".zoom-group").attr("transform", event.transform);
+                    });
+                
+                svg.call(this.zoom);
+                
+
+                svg.append("g").attr("class", "zoom-group");
+            }
+
+            async loadNetworkData() {
+                const startTime = performance.now();
+                
+
+                this.cancelLoad();
+                
+
+                this.abortController = new AbortController();
+                
+                const loading = document.getElementById('loading');
+                const loadingMessage = document.getElementById('loadingMessage');
+                loading.classList.remove('hidden');
+                
+                try {
+                    const startTimeValue = document.getElementById('startTime').value;
+                    const endTimeValue = document.getElementById('endTime').value;
+                    
+                    // Validate time range
+                    if (startTimeValue && endTimeValue) {
+                        const start = new Date(startTimeValue);
+                        const end = new Date(endTimeValue);
+                        const diffHours = (end - start) / (1000 * 60 * 60);
+                        
+                        if (diffHours > 24) {
+                            this.showMessage('warning', `Large time range (${Math.round(diffHours)} hours) may take a while to load.`);
+                        }
+                    }
+                    
+                    let url = '/api/network-map';
+                    if (startTimeValue && endTimeValue) {
+                        const start = new Date(startTimeValue).toISOString();
+                        const end = new Date(endTimeValue).toISOString();
+                        url += `?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+                    }
+                    
+                    loadingMessage.textContent = 'Fetching Tailnet data...';
+                    
+
+                    const response = await this.fetchWithTimeout(url, {
+                        signal: this.abortController.signal
+                    }, 30000);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    loadingMessage.textContent = 'Processing Tailnet flows...';
+                    
+                    this.networkData = await response.json();
+                    this.updateDevicesList();
+                    this.applyDynamicFilters();
+                    this.updateStats();
+                    
+                    const loadTime = ((performance.now() - startTime) / 1000).toFixed(1);
+                    document.getElementById('loadTime').textContent = `${loadTime}s`;
+                    
+                    this.clearMessage();
+                    
+                } catch (error) {
+                    if (error.name === 'AbortError') {
+                        this.showMessage('warning', 'Request was cancelled.');
+                    } else if (error.name === 'TimeoutError') {
+                        this.showMessage('error', 'Request timed out. Try a smaller time range.');
+                    } else {
+                        console.error('Error loading Tailnet data:', error);
+                        this.showMessage('error', 'Failed to load Tailnet data: ' + error.message);
+                    }
+                } finally {
+                    loading.classList.add('hidden');
+                    this.abortController = null;
+                }
+            }
+
+            async fetchWithTimeout(url, options = {}, timeout = 30000) {
+                return Promise.race([
+                    fetch(url, options),
+                    new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('TimeoutError')), timeout)
+                    )
+                ]);
+            }
+
+            cancelLoad() {
+                if (this.abortController) {
+                    this.abortController.abort();
+                    this.abortController = null;
+                }
+            }
+
+            showMessage(type, message) {
+                const messageArea = document.getElementById('messageArea');
+                const className = type === 'error' ? 'error-message' : 'warning-message';
+                
+                messageArea.innerHTML = `
+                    <div class="flex items-center justify-between p-3 rounded-lg ${className}">
+                        <div class="flex items-center">
+                            <i class="fas fa-${type === 'error' ? 'exclamation-circle' : 'exclamation-triangle'} mr-2"></i>
+                            <span>${message}</span>
+                        </div>
+                        <button onclick="this.parentElement.parentElement.classList.add('hidden')" class="ml-4">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                `;
+                messageArea.classList.remove('hidden');
+            }
+
+            clearMessage() {
+                document.getElementById('messageArea').classList.add('hidden');
+            }
+
+            toggleSimulation() {
+                const btn = document.getElementById('pauseSimulation');
+                const icon = btn.querySelector('i');
+                
+                if (this.simulation) {
+                    if (this.isSimulationPaused) {
+                        this.simulation.restart();
+                        icon.className = 'fas fa-pause';
+                        this.isSimulationPaused = false;
+                    } else {
+                        this.simulation.stop();
+                        icon.className = 'fas fa-play';
+                        this.isSimulationPaused = true;
+                    }
+                }
+            }
+
+            updateDevicesList() {
+                const devicesList = document.getElementById('devicesList');
+                devicesList.innerHTML = '';
+                
+                if (!this.networkData || !this.networkData.devices) return;
+                
+                // Only show machines that have flows
+                const devicesWithFlows = this.networkData.devices.filter(device => {
+                    return this.networkData.flows.some(flow => 
+                        flow.sourceDevice?.id === device.id || 
+                        flow.destinationDevice?.id === device.id ||
+                        device.addresses?.some(addr => {
+                            const ip = addr.split('/')[0];
+                            return flow.sourceIP === ip || flow.destinationIP === ip;
+                        })
+                    );
+                });
+                
+                devicesWithFlows.forEach(device => {
+                    const deviceElement = document.createElement('div');
+                    const isFocused = this.focusedDevice?.id === device.id;
+                    const isSelected = this.selectedDevice?.id === device.id;
+                    
+                    // Determine machine type for Tailscale styling
+                    let machineType = '';
+                    let machineIcon = '💻';
+                    if (device.tags?.includes('exit-node') || device.tags?.includes('exitnode')) {
+                        machineType = 'exit-node';
+                        machineIcon = '🚀';
+                    } else if (device.tags?.includes('subnet-router') || device.tags?.includes('router')) {
+                        machineType = 'subnet-router';
+                        machineIcon = '🌐';
+                    } else if (device.tags?.includes('ssh') || device.tags?.includes('server')) {
+                        machineIcon = '🖥️';
+                    } else if (device.os?.toLowerCase().includes('ios') || device.os?.toLowerCase().includes('android')) {
+                        machineIcon = '📱';
+                    }
+
+                    // Simple online status determination
+                    const isOnline = this.isDeviceOnline(device);
+
+                    deviceElement.className = `machine-card p-2 rounded cursor-pointer transition-all ${
+                        isOnline ? 'online' : ''
+                    } ${
+                        isSelected ? 'selected' : ''
+                    } ${
+                        machineType === 'exit-node' ? 'exit-node' : ''
+                    } ${
+                        machineType === 'subnet-router' ? 'subnet-router' : ''
+                    }`;
+                    
+                    // Count IPv4 and IPv6 addresses
+                    const ipv4Count = device.addresses?.filter(addr => !this.isIPv6(addr.split('/')[0])).length || 0;
+                    const ipv6Count = device.addresses?.filter(addr => this.isIPv6(addr.split('/')[0])).length || 0;
+                    
+                    const deviceName = (device.name || device.hostname || 'Unknown').length > 16 
+                        ? (device.name || device.hostname || 'Unknown').substring(0, 13) + '...' 
+                        : (device.name || device.hostname || 'Unknown');
+                    
+                    // Show tags with proper truncation and containment
+                    const tagsHtml = device.tags && device.tags.length > 0 
+                        ? `<div class="flex flex-wrap gap-1 mt-1 max-w-full overflow-hidden">${device.tags.slice(0, 2).map(tag => 
+                            `<span class="tag-badge px-1 py-0.5 rounded text-xs">${tag.length > 8 ? tag.substring(0, 6) + '..' : tag}</span>`
+                          ).join('')}${device.tags.length > 2 ? '<span class="text-xs text-slate-400">+' + (device.tags.length - 2) + '</span>' : ''}</div>`
+                        : '';
+
+                    deviceElement.innerHTML = `
+                        <div class="flex items-start space-x-2 w-full overflow-hidden">
+                            <div class="${isOnline ? 'connected-dot' : 'disconnected-dot'} mt-1"></div>
+                            <div class="flex-1 min-w-0 overflow-hidden">
+                                <div class="flex items-center space-x-2 mb-1">
+                                    <div class="font-medium text-sm truncate flex-1">${deviceName}</div>
+                                    ${machineType === 'exit-node' ? '<span class="text-xs bg-yellow-600 text-yellow-100 px-1 py-0.5 rounded whitespace-nowrap">Exit</span>' : ''}
+                                    ${machineType === 'subnet-router' ? '<span class="text-xs bg-green-600 text-green-100 px-1 py-0.5 rounded whitespace-nowrap">Router</span>' : ''}
+                                </div>
+                                                                    <div class="text-xs text-slate-400 truncate">
+                                        ${device.os || 'Unknown'} • ${ipv4Count + ipv6Count} IP${ipv4Count + ipv6Count !== 1 ? 's' : ''}${isFocused ? ' • Focused' : ''}
+                                    </div>
+                                    ${tagsHtml}
+                            </div>
+                        </div>
+                    `;
+                    
+                    deviceElement.addEventListener('click', () => {
+                        this.selectDevice(device);
+                        this.focusOnDevice(device);
+                    });
+                    
+                    devicesList.appendChild(deviceElement);
+                });
+            }
+
+            selectDevice(device) {
+                this.selectedDevice = device;
+                this.showDeviceDetails(device);
+                this.highlightDeviceFlows(device);
+            }
+
+            focusOnDevice(device) {
+                if (this.focusedDevice?.id === device.id) {
+                    // If clicking the same device, clear focus
+                    this.focusedDevice = null;
+                } else {
+                    // Focus on new device
+                    this.focusedDevice = device;
+                }
+                this.applyDynamicFilters();
+            }
+
+            showDeviceDetails(device) {
+                const deviceDetails = document.getElementById('deviceDetails');
+                const deviceInfo = document.getElementById('deviceInfo');
+                
+                // Separate IPv4 and IPv6 addresses
+                const ipv4Addresses = device.addresses?.filter(addr => !this.isIPv6(addr.split('/')[0])) || [];
+                const ipv6Addresses = device.addresses?.filter(addr => this.isIPv6(addr.split('/')[0])) || [];
+                
+                // Count flows involving this machine
+                const machineFlows = this.networkData.flows.filter(flow => 
+                    flow.sourceDevice?.id === device.id || flow.destinationDevice?.id === device.id
+                );
+                
+                const totalTraffic = machineFlows.reduce((sum, flow) => sum + (flow.totalBytes || 0), 0);
+                
+                // Simple online status determination
+                const isOnline = this.isDeviceOnline(device);
+                
+                // Determine machine role
+                let machineRole = 'Standard Machine';
+                if (device.tags?.includes('exit-node') || device.tags?.includes('exitnode')) {
+                    machineRole = 'Exit Node';
+                } else if (device.tags?.includes('subnet-router') || device.tags?.includes('router')) {
+                    machineRole = 'Subnet Router';
+                } else if (device.tags?.includes('ssh') || device.tags?.includes('server')) {
+                    machineRole = 'SSH Server';
+                }
+                
+                deviceInfo.innerHTML = `
+                    <div class="bg-slate-800 p-3 rounded-lg border border-slate-600">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="font-medium text-slate-100">${device.name || device.hostname}</div>
+                            <button onclick="window.tsflowApp.clearDeviceFocus()" class="text-xs text-blue-400 hover:text-blue-300">
+                                ${this.focusedDevice?.id === device.id ? 'Clear Focus' : 'Focus View'}
+                            </button>
+                        </div>
+                        <div class="space-y-1 text-sm">
+                            <div><span class="font-medium text-slate-300">Status:</span> 
+                                <span class="${isOnline ? 'text-green-400' : 'text-slate-500'}">${isOnline ? '🟢 Online' : '🔴 Offline'}</span>
+                            </div>
+                            <div><span class="font-medium text-slate-300">Role:</span> <span class="text-slate-200">${machineRole}</span></div>
+                            <div><span class="font-medium text-slate-300">OS:</span> <span class="text-slate-200">${device.os || 'Unknown'}</span></div>
+                            <div><span class="font-medium text-slate-300">User:</span> <span class="text-slate-200">${device.user || 'N/A'}</span></div>
+                            <div><span class="font-medium text-slate-300">Flows:</span> <span class="text-slate-200">${machineFlows.length}</span></div>
+                            <div><span class="font-medium text-slate-300">Traffic Volume:</span> <span class="text-blue-400">${this.formatBytes(totalTraffic)}</span></div>
+                            
+                            ${device.tags && device.tags.length > 0 ? `
+                                <div><span class="font-medium text-slate-300">Tags:</span></div>
+                                <div class="flex flex-wrap gap-1 ml-4 max-w-full overflow-hidden">
+                                    ${device.tags.map(tag => `<span class="tag-badge px-1 py-0.5 rounded text-xs">${tag.length > 8 ? tag.substring(0, 6) + '..' : tag}</span>`).join('')}
+                                </div>
+                            ` : ''}
+                            
+                            ${ipv4Addresses.length > 0 ? `
+                                <div><span class="font-medium text-slate-300">IPv4:</span></div>
+                                ${ipv4Addresses.map(addr => `<div class="ml-4 text-xs text-slate-400">📍 ${addr}</div>`).join('')}
+                            ` : ''}
+                            
+                            ${ipv6Addresses.length > 0 ? `
+                                <div><span class="font-medium text-slate-300">IPv6:</span></div>
+                                ${ipv6Addresses.map(addr => `<div class="ml-4 text-xs text-slate-400">🌐 ${addr}</div>`).join('')}
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                
+                deviceDetails.classList.remove('hidden');
+            }
+
+            clearDeviceFocus() {
+                this.focusedDevice = null;
+                this.applyDynamicFilters();
+                if (this.selectedDevice) {
+                    this.showDeviceDetails(this.selectedDevice);
+                }
+            }
+
+            highlightDeviceFlows(device) {
+                // Highlight flows related to the selected device
+                this.renderVisualization();
+            }
+
+            applyDynamicFilters() {
+                if (!this.networkData?.flows) return;
+                
+                let filtered = this.networkData.flows.filter(flow => {
+                    // Quick protocol filter
+                    if (this.quickProtocol && flow.protocol !== this.quickProtocol) return false;
+                    
+                    // Quick traffic filter
+                    const trafficMB = (flow.totalBytes || 0) / (1024 * 1024);
+                    if (this.quickTrafficMB > 0 && trafficMB < this.quickTrafficMB) return false;
+                    
+                    // Hide external IPs filter
+                    if (this.hideExternalIPs) {
+                        // Only show flows between known devices (both source and destination must have device info)
+                        if (!flow.sourceDevice || !flow.destinationDevice) return false;
+                    }
+                    
+                    // Focus device filter (when a device is selected)
+                    if (this.focusedDevice) {
+                        const isConnected = (flow.sourceDevice?.id === this.focusedDevice.id) ||
+                                          (flow.destinationDevice?.id === this.focusedDevice.id) ||
+                                          (flow.sourceIP === this.getDeviceMainIP(this.focusedDevice)) ||
+                                          (flow.destinationIP === this.getDeviceMainIP(this.focusedDevice));
+                        if (!isConnected) return false;
+                    }
+                    
+                    // Dynamic search query
+                    if (this.searchQuery) {
+                        return this.matchesSearchQuery(flow, this.searchQuery);
+                    }
+                    
+                    return true;
+                });
+                
+                // Sort by total bytes (descending) to prioritize high-volume flows
+                filtered.sort((a, b) => (b.totalBytes || 0) - (a.totalBytes || 0));
+                
+                // Limit flows for performance
+                if (filtered.length > this.maxFlows) {
+                    const originalCount = filtered.length;
+                    filtered = filtered.slice(0, this.maxFlows);
+                    
+                    this.showMessage('warning', `Showing top ${this.maxFlows} flows (${this.formatBytes(filtered[this.maxFlows-1]?.totalBytes || 0)} min) out of ${originalCount} filtered flows.`);
+                } else {
+                    this.clearMessage();
+                }
+                
+                this.filteredFlows = filtered;
+                this.renderVisualization();
+                this.updateStats();
+                this.updateActiveFilters();
+            }
+
+            matchesSearchQuery(flow, query) {
+                const lowerQuery = query.toLowerCase();
+                
+                // Handle special search syntax
+                if (lowerQuery.includes(':')) {
+                    const parts = lowerQuery.split(' ').filter(p => p.includes(':'));
+                    for (const part of parts) {
+                        const [key, value] = part.split(':');
+                        
+                        switch (key) {
+                            case 'protocol':
+                                if (flow.protocol.toLowerCase() !== value) return false;
+                                break;
+                            case 'tag':
+                                const hasTag = (flow.sourceDevice?.tags || []).concat(flow.destinationDevice?.tags || [])
+                                    .some(tag => tag.toLowerCase().includes(value));
+                                if (!hasTag) return false;
+                                break;
+                            case 'ip':
+                                // Filter by specific IP address
+                                if (flow.sourceIP !== value && flow.destinationIP !== value) return false;
+                                break;
+                            case 'traffic':
+                                const trafficMB = (flow.totalBytes || 0) / (1024 * 1024);
+                                if (value.startsWith('>')) {
+                                    const threshold = parseFloat(value.substring(1).replace('mb', '').replace('gb', '000'));
+                                    if (trafficMB <= threshold) return false;
+                                } else if (value.startsWith('<')) {
+                                    const threshold = parseFloat(value.substring(1).replace('mb', '').replace('gb', '000'));
+                                    if (trafficMB >= threshold) return false;
+                                }
+                                break;
+                            case 'type':
+                                if (value === 'external') {
+                                    const hasSourceDevice = flow.sourceDevice !== null;
+                                    const hasDestDevice = flow.destinationDevice !== null;
+                                    if (hasSourceDevice && hasDestDevice) return false;
+                                } else if (value === 'internal') {
+                                    const hasSourceDevice = flow.sourceDevice !== null;
+                                    const hasDestDevice = flow.destinationDevice !== null;
+                                    if (!hasSourceDevice || !hasDestDevice) return false;
+                                }
+                                break;
+                            case 'has':
+                                if (value === 'tags') {
+                                    const hasTags = (flow.sourceDevice?.tags?.length > 0) || (flow.destinationDevice?.tags?.length > 0);
+                                    if (!hasTags) return false;
+                                }
+                                break;
+                        }
+                    }
+                    
+                    // Remove special syntax for general search
+                    const generalQuery = lowerQuery.replace(/\w+:[^\s]+/g, '').trim();
+                    if (!generalQuery) return true;
+                    query = generalQuery;
+                }
+                
+                // General text search
+                const searchText = [
+                    flow.sourceIP,
+                    flow.destinationIP,
+                    flow.sourceDevice?.name,
+                    flow.sourceDevice?.hostname,
+                    flow.destinationDevice?.name,
+                    flow.destinationDevice?.hostname,
+                    flow.protocol,
+                    flow.port,
+                    ...(flow.sourceDevice?.tags || []),
+                    ...(flow.destinationDevice?.tags || [])
+                ].filter(Boolean).join(' ').toLowerCase();
+                
+                return searchText.includes(query.toLowerCase());
+            }
+
+            clearAllDynamicFilters() {
+                document.getElementById('dynamicSearch').value = '';
+                document.getElementById('quickFilterProtocol').value = '';
+                document.getElementById('quickFilterTraffic').value = '0';
+                document.getElementById('hideExternalIPs').checked = false;
+                this.searchQuery = '';
+                this.quickProtocol = '';
+                this.quickTrafficMB = 0;
+                this.hideExternalIPs = false;
+                this.focusedDevice = null;
+                this.applyDynamicFilters();
+            }
+
+            setQuickFilter(query) {
+                document.getElementById('dynamicSearch').value = query;
+                this.searchQuery = query;
+                this.applyDynamicFilters();
+            }
+
+            updateActiveFilters() {
+                const activeFilters = document.getElementById('activeFilters');
+                const filters = [];
+                
+                if (this.quickProtocol) filters.push(`Protocol: ${this.quickProtocol}`);
+                if (this.quickTrafficMB > 0) filters.push(`Traffic: ${this.quickTrafficMB}+ MB`);
+                if (this.hideExternalIPs) filters.push('Internal traffic only');
+                if (this.focusedDevice) filters.push(`Focused: ${this.focusedDevice.name || this.focusedDevice.hostname}`);
+                if (this.searchQuery) filters.push(`Search: ${this.searchQuery}`);
+                
+                if (filters.length > 0) {
+                    activeFilters.innerHTML = filters.map(filter => 
+                        `<span class="bg-blue-600 text-blue-100 text-xs px-2 py-1 rounded-full">${filter}</span>`
+                    ).join('');
+                    activeFilters.classList.remove('hidden');
+                } else {
+                    activeFilters.classList.add('hidden');
+                }
+            }
+
+            isIPv6(ip) {
+                return ip && ip.includes(':');
+            }
+
+            getDeviceMainIP(device) {
+                if (!device?.addresses) return null;
+                return device.addresses[0]?.split('/')[0];
+            }
+
+            isDeviceOnline(device) {
+                if (!device) return false;
+                
+                // Check if we have explicit online status from API
+                if (typeof device.online === 'boolean') {
+                    // If API says online, trust it
+                    if (device.online) return true;
+                    
+                    // If API says offline, but device was seen recently, consider it online
+                    if (device.lastSeen) {
+                        try {
+                            const lastSeenDate = new Date(device.lastSeen);
+                            const now = new Date();
+                            const diffMinutes = (now - lastSeenDate) / (1000 * 60);
+                            
+                            // Consider online if seen within last 5 minutes (more strict)
+                            if (diffMinutes < 5) {
+                                console.log(`Device ${device.name || device.hostname}: API says offline but lastSeen ${diffMinutes.toFixed(1)}min ago - considering online`);
+                                return true;
+                            }
+                            
+                            console.log(`Device ${device.name || device.hostname}: offline (lastSeen ${diffMinutes.toFixed(1)}min ago)`);
+                            return false;
+                        } catch (error) {
+                            console.warn('Error parsing lastSeen date:', device.lastSeen, error);
+                            return false;
+                        }
+                    }
+                    
+                    // API says offline and no lastSeen data
+                    return false;
+                }
+                
+                // If online field is a string, handle common string values
+                if (typeof device.online === 'string') {
+                    const onlineStr = device.online.toLowerCase();
+                    if (onlineStr === 'true' || onlineStr === 'online') return true;
+                    if (onlineStr === 'false' || onlineStr === 'offline') {
+                        // Same logic as boolean false - check lastSeen
+                        if (device.lastSeen) {
+                            try {
+                                const lastSeenDate = new Date(device.lastSeen);
+                                const now = new Date();
+                                const diffMinutes = (now - lastSeenDate) / (1000 * 60);
+                                return diffMinutes < 5;
+                            } catch (error) {
+                                return false;
+                            }
+                        }
+                        return false;
+                    }
+                }
+                
+                // Fallback to lastSeen only if we have it (no explicit online field)
+                if (device.lastSeen) {
+                    try {
+                        const lastSeenDate = new Date(device.lastSeen);
+                        const now = new Date();
+                        const diffMinutes = (now - lastSeenDate) / (1000 * 60);
+                        
+                        // Consider online if seen within last 15 minutes
+                        return diffMinutes < 15;
+                    } catch (error) {
+                        console.warn('Error parsing lastSeen date:', device.lastSeen, error);
+                        return false;
+                    }
+                }
+                
+                // If we have no status info, assume offline
+                return false;
+            }
+
+            createLinksFromFlows(nodeMap) {
+                // Aggregate flows between same node pairs for cleaner visualization
+                // Also handle cases where the same machine has multiple IPs (LAN + Tailscale)
+                const linkMap = new Map();
+                this.filteredFlows.forEach(flow => {
+                    // Try to find source and target nodes, preferring device mapping over IP mapping
+                    let source = null;
+                    let target = null;
+                    
+                    // Check for device-based mapping first (more reliable for LAN IP aggregation)
+                    if (flow.sourceDevice?.id) {
+                        source = nodeMap.get(flow.sourceDevice.id);
+                    }
+                    if (!source) {
+                        source = nodeMap.get(flow.sourceIP);
+                    }
+                    
+                    if (flow.destinationDevice?.id) {
+                        target = nodeMap.get(flow.destinationDevice.id);
+                    }
+                    if (!target) {
+                        target = nodeMap.get(flow.destinationIP);
+                    }
+                    
+                    if (source && target && source !== target) {
+                        // Create a consistent link key for bidirectional aggregation
+                        const linkKey = source.id < target.id ? `${source.id}->${target.id}` : `${target.id}->${source.id}`;
+                        
+                        let linkData = linkMap.get(linkKey);
+                        if (linkData) {
+                            linkData.totalBytes += flow.totalBytes || 0;
+                            linkData.flowCount += flow.flowCount || 1;
+                            linkData.flows.push(flow);
+                            linkData.protocols.add(flow.protocol);
+                        } else {
+                            linkMap.set(linkKey, {
+                                source: source,
+                                target: target,
+                                totalBytes: flow.totalBytes || 0,
+                                flowCount: flow.flowCount || 1,
+                                flows: [flow],
+                                protocols: new Set([flow.protocol])
+                            });
+                        }
+                    }
+                });
+
+                return Array.from(linkMap.values())
+                    .sort((a, b) => b.totalBytes - a.totalBytes);
+            }
+
+            renderNodesAndLinks(svg, nodes, links) {
+                // Create links
+                const link = svg.append("g")
+                    .selectAll("line")
+                    .data(links)
+                    .join("line")
+                    .attr("class", "flow-line")
+                    .attr("stroke", d => {
+                        if (d.protocols.has('TCP') && d.protocols.has('UDP')) return "#8b5cf6";
+                        if (d.protocols.has('TCP')) return "#3b82f6";
+                        if (d.protocols.has('UDP')) return "#10b981";
+                        
+
+                        return "#6b7280";
+                    })
+                    .attr("stroke-width", d => {
+                        const maxBytesInView = Math.max(...links.map(l => l.totalBytes || 1));
+                        const ratio = (d.totalBytes || 1) / maxBytesInView;
+                                        const scaledRatio = Math.pow(ratio, 0.3);
+                return 1 + 19 * scaledRatio;
+                    })
+                    .attr("opacity", d => Math.min(0.9, 0.3 + (d.flowCount / 10)))
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y)
+                    .on("mouseover", (event, d) => {
+                        this.showFlowTooltip(event, d);
+                    })
+                    .on("mouseout", () => {
+                        this.hideTooltip();
+                    });
+                
+                // Create nodes
+                const node = svg.append("g")
+                    .selectAll("g")
+                    .data(nodes)
+                    .join("g")
+                    .attr("class", "node")
+                    .attr("transform", d => `translate(${d.x},${d.y})`)
+                    .style("cursor", "pointer")
+                    .on("click", (event, d) => {
+                        event.stopPropagation();
+                        if (d.device) {
+                            this.selectDevice(d.device);
+                            this.focusOnDevice(d.device);
+                        }
+                    });
+                
+                // Add metadata boxes for devices (same as in topology view)
+                this.renderDeviceMetadataBoxes(node.filter(d => d.type === 'device'));
+                
+                // Add simple circles for external nodes (same as in topology view)
+                this.renderExternalNodes(node.filter(d => d.type === 'external'));
+            }
+
+            renderVisualization() {
+                switch (this.currentViewMode) {
+                    case 'topology':
+                        this.renderNetworkTopology();
+                        break;
+                    case 'circular':
+                        this.renderCircularLayout();
+                        break;
+                    case 'grid':
+                        this.renderGridLayout();
+                        break;
+                    default:
+                        this.renderNetworkTopology();
+                }
+            }
+
+            renderNetworkTopology() {
+                if (!this.networkData) return;
+                
+                // Stop existing simulation
+                if (this.simulation) {
+                    this.simulation.stop();
+                }
+                
+                const svg = this.svg.select(".zoom-group");
+                svg.selectAll("*").remove();
+                
+                const width = document.getElementById('networkMap').clientWidth;
+                const height = document.getElementById('networkMap').clientHeight;
+                
+                // Create nodes from devices and external IPs
+                const nodes = [];
+                const nodeMap = new Map();
+                
+                // Only include devices that have flows
+                const devicesWithFlows = this.networkData.devices.filter(device => {
+                    return this.filteredFlows.some(flow => 
+                        flow.sourceDevice?.id === device.id || 
+                        flow.destinationDevice?.id === device.id ||
+                        device.addresses?.some(addr => {
+                            const ip = addr.split('/')[0];
+                            return flow.sourceIP === ip || flow.destinationIP === ip;
+                        })
+                    );
+                });
+                
+                // Use all devices with flows (no artificial limit)
+                const devices = devicesWithFlows;
+                
+                devices.forEach(device => {
+                    const node = {
+                        id: device.id,
+                        name: device.name || device.hostname,
+                        type: 'device',
+                        device: device,
+                        x: Math.random() * width,
+                        y: Math.random() * height
+                    };
+                    nodes.push(node);
+                    nodeMap.set(device.id, node);
+                    
+                    // Also map by IP addresses
+                    device.addresses?.forEach(addr => {
+                        const ip = addr.split('/')[0];
+                        nodeMap.set(ip, node);
+                    });
+                });
+                
+                // Add external IP nodes (limited)
+                const externalIPs = new Set();
+                this.filteredFlows.forEach(flow => {
+                    if (!nodeMap.has(flow.sourceIP)) {
+                        externalIPs.add(flow.sourceIP);
+                    }
+                    if (!nodeMap.has(flow.destinationIP)) {
+                        externalIPs.add(flow.destinationIP);
+                    }
+                });
+                
+                // Limit external IPs
+                const limitedExternalIPs = Array.from(externalIPs).slice(0, 20);
+                limitedExternalIPs.forEach(ip => {
+                    const node = {
+                        id: ip,
+                        name: ip,
+                        type: 'external',
+                        x: Math.random() * width,
+                        y: Math.random() * height
+                    };
+                    nodes.push(node);
+                    nodeMap.set(ip, node);
+                });
+                
+                // Aggregate flows between same node pairs for cleaner visualization
+                const linkMap = new Map();
+                this.filteredFlows.forEach(flow => {
+                    const source = nodeMap.get(flow.sourceIP) || nodeMap.get(flow.sourceDevice?.id);
+                    const target = nodeMap.get(flow.destinationIP) || nodeMap.get(flow.destinationDevice?.id);
+                    
+                    if (source && target && source !== target) {
+                        const linkKey = `${source.id}->${target.id}`;
+                        const reverseKey = `${target.id}->${source.id}`;
+                        
+                        // Use existing link or create new one
+                        let linkData = linkMap.get(linkKey) || linkMap.get(reverseKey);
+                        if (linkData) {
+                            linkData.totalBytes += flow.totalBytes || 0;
+                            linkData.flowCount += flow.flowCount || 1;
+                            linkData.flows.push(flow);
+                            // FIXED: Add protocol to existing Set
+                            linkData.protocols.add(flow.protocol);
+                        } else {
+                            linkMap.set(linkKey, {
+                                source: source,
+                                target: target,
+                                totalBytes: flow.totalBytes || 0,
+                                flowCount: flow.flowCount || 1,
+                                flows: [flow],
+                                protocols: new Set([flow.protocol])
+                            });
+                        }
+                    }
+                });
+
+                const links = Array.from(linkMap.values())
+                    .sort((a, b) => b.totalBytes - a.totalBytes)
+                    .slice(0, 50);
+                
+                // Create force simulation with very stable settings to prevent jiggling
+                this.simulation = d3.forceSimulation(nodes)
+                    .force("link", d3.forceLink(links).id(d => d.id).distance(150).strength(0.5))
+                    .force("charge", d3.forceManyBody().strength(-300))
+                    .force("center", d3.forceCenter(width / 2, height / 2))
+                    .force("collision", d3.forceCollide().radius(d => d.type === 'device' ? 70 : 25))
+                    .alpha(0.3)
+                    .alphaDecay(0.05)
+                    .velocityDecay(0.9);
+                
+
+                const link = svg.append("g")
+                    .selectAll("line")
+                    .data(links)
+                    .join("line")
+                    .attr("class", "flow-line")
+                    .attr("stroke", d => {
+
+                        if (d.protocols.has('TCP') && d.protocols.has('UDP')) return "#8b5cf6";
+                        if (d.protocols.has('TCP')) return "#3b82f6";
+                        if (d.protocols.has('UDP')) return "#10b981";
+                        
+
+                        return "#6b7280";
+                    })
+                    .attr("class", d => {
+
+                        if (d.protocols.has('TCP') && d.protocols.has('UDP')) return "flow-line mixed";
+                        if (d.protocols.has('TCP')) return "flow-line tcp";
+                        if (d.protocols.has('UDP')) return "flow-line udp";
+                        return "flow-line";
+                    })
+                    .attr("stroke-width", d => {
+                        // Enhanced bandwidth-based thickness scaling
+                        const minWidth = 2;
+                        const maxWidth = 25;
+                        const bytes = d.totalBytes || 1;
+                        
+                        // Find max bytes in current dataset for relative scaling
+                        const maxBytesInView = Math.max(...links.map(l => l.totalBytes || 1));
+                        const ratio = bytes / maxBytesInView;
+                        
+                        // Use cube root for dramatic bandwidth visualization
+                        const scaledRatio = Math.pow(ratio, 0.25);
+                        return minWidth + (maxWidth - minWidth) * scaledRatio;
+                    })
+                    .attr("opacity", d => {
+                        // More visible opacity based on traffic volume
+                        const maxBytesInView = Math.max(...links.map(l => l.totalBytes || 1));
+                        const ratio = (d.totalBytes || 1) / maxBytesInView;
+                        return Math.min(0.95, 0.4 + 0.5 * ratio);
+                    })
+                    .on("mouseover", (event, d) => {
+                        this.showFlowTooltip(event, d);
+                    })
+                    .on("mouseout", () => {
+                        this.hideTooltip();
+                    });
+                
+                // Create nodes (removed drag to prevent jiggling)
+                const node = svg.append("g")
+                    .selectAll("g")
+                    .data(nodes)
+                    .join("g")
+                    .attr("class", "node");
+                
+                // Add metadata boxes for devices
+                this.renderDeviceMetadataBoxes(node.filter(d => d.type === 'device'));
+                
+                // Add clickable external nodes
+                this.renderExternalNodes(node.filter(d => d.type === 'external'));
+                
+                // Add click handlers for both devices and external IPs
+                node.on("click", (event, d) => {
+                    event.stopPropagation();
+                    if (d.device) {
+                        this.selectDevice(d.device);
+                        this.focusOnDevice(d.device);
+                    } else if (d.type === 'external') {
+                        // Filter by external IP
+                        this.setQuickFilter(`ip:${d.id}`);
+                    }
+                });
+                
+                // Update positions on simulation tick (very throttled for stability)
+                let lastTick = 0;
+                this.simulation.on("tick", () => {
+                    const now = Date.now();
+                    if (now - lastTick < 50) return; // Throttle to ~20fps for stability
+                    lastTick = now;
+                    
+                    link
+                        .attr("x1", d => d.source.x)
+                        .attr("y1", d => d.source.y)
+                        .attr("x2", d => d.target.x)
+                        .attr("y2", d => d.target.y);
+                    
+                    node
+                        .attr("transform", d => `translate(${d.x},${d.y})`);
+                        
+                    // Stop simulation when alpha gets low to prevent micro-movements
+                    if (this.simulation.alpha() < 0.05) {
+                        this.simulation.stop();
+                        this.isSimulationStable = true;
+                    }
+                });
+                
+                // Stop simulation quickly to prevent jiggling
+                setTimeout(() => {
+                    this.isSimulationStable = true;
+                    if (this.simulation && !this.isSimulationPaused) {
+                        this.simulation.alpha(0.01); // Very low alpha
+                        this.simulation.stop(); // Just stop it
+                    }
+                }, 2000); // Shorter timeout
+            }
+
+            renderCircularLayout() {
+                if (!this.networkData) return;
+                
+                // Stop existing simulation
+                if (this.simulation) {
+                    this.simulation.stop();
+                }
+                
+                const svg = this.svg.select(".zoom-group");
+                svg.selectAll("*").remove();
+                
+                const width = document.getElementById('networkMap').clientWidth;
+                const height = document.getElementById('networkMap').clientHeight;
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const radius = Math.min(width, height) * 0.3;
+                
+                // Get devices with flows
+                const devicesWithFlows = this.networkData.devices.filter(device => {
+                    return this.filteredFlows.some(flow => 
+                        flow.sourceDevice?.id === device.id || 
+                        flow.destinationDevice?.id === device.id
+                    );
+                });
+                
+                const nodes = [];
+                const nodeMap = new Map();
+                
+                // Position devices in a circle
+                devicesWithFlows.forEach((device, i) => {
+                    const angle = (i / devicesWithFlows.length) * 2 * Math.PI;
+                    const node = {
+                        id: device.id,
+                        name: device.name || device.hostname,
+                        type: 'device',
+                        device: device,
+                        x: centerX + radius * Math.cos(angle),
+                        y: centerY + radius * Math.sin(angle),
+                        fx: centerX + radius * Math.cos(angle), // Fixed position
+                        fy: centerY + radius * Math.sin(angle)
+                    };
+                    nodes.push(node);
+                    nodeMap.set(device.id, node);
+                    
+                    device.addresses?.forEach(addr => {
+                        const ip = addr.split('/')[0];
+                        nodeMap.set(ip, node);
+                    });
+                });
+                
+                // Create links
+                const links = this.createLinksFromFlows(nodeMap);
+                
+                this.renderNodesAndLinks(svg, nodes, links.slice(0, 50));
+            }
+
+            renderGridLayout() {
+                if (!this.networkData) return;
+                
+                // Stop existing simulation
+                if (this.simulation) {
+                    this.simulation.stop();
+                }
+                
+                const svg = this.svg.select(".zoom-group");
+                svg.selectAll("*").remove();
+                
+                const width = document.getElementById('networkMap').clientWidth;
+                const height = document.getElementById('networkMap').clientHeight;
+                
+                // Get devices with flows
+                const devicesWithFlows = this.networkData.devices.filter(device => {
+                    return this.filteredFlows.some(flow => 
+                        flow.sourceDevice?.id === device.id || 
+                        flow.destinationDevice?.id === device.id
+                    );
+                });
+                
+                const nodes = [];
+                const nodeMap = new Map();
+                
+                // Calculate grid dimensions
+                const cols = Math.ceil(Math.sqrt(devicesWithFlows.length));
+                const rows = Math.ceil(devicesWithFlows.length / cols);
+                const cellWidth = (width * 0.8) / cols;
+                const cellHeight = (height * 0.8) / rows;
+                const startX = width * 0.1;
+                const startY = height * 0.1;
+                
+                // Position devices in a grid
+                devicesWithFlows.forEach((device, i) => {
+                    const col = i % cols;
+                    const row = Math.floor(i / cols);
+                    const node = {
+                        id: device.id,
+                        name: device.name || device.hostname,
+                        type: 'device',
+                        device: device,
+                        x: startX + col * cellWidth + cellWidth / 2,
+                        y: startY + row * cellHeight + cellHeight / 2,
+                        fx: startX + col * cellWidth + cellWidth / 2, // Fixed position
+                        fy: startY + row * cellHeight + cellHeight / 2
+                    };
+                    nodes.push(node);
+                    nodeMap.set(device.id, node);
+                    
+                    device.addresses?.forEach(addr => {
+                        const ip = addr.split('/')[0];
+                        nodeMap.set(ip, node);
+                    });
+                });
+                
+                // Create links
+                const links = this.createLinksFromFlows(nodeMap);
+                
+                this.renderNodesAndLinks(svg, nodes, links.slice(0, 50));
+            }
+
+            showFlowTooltip(event, linkData) {
+                const tooltip = this.getOrCreateTooltip();
+                
+                // Calculate traffic percentage relative to max
+                const maxBytesInView = Math.max(...(this.filteredFlows.map(f => f.totalBytes || 1)));
+                const trafficPercent = ((linkData.totalBytes / maxBytesInView) * 100).toFixed(1);
+                
+                // Check if IPv6 is involved
+                const hasIPv6 = linkData.flows.some(flow => 
+                    this.isIPv6(flow.sourceIP) || this.isIPv6(flow.destinationIP)
+                );
+                
+                tooltip.innerHTML = `
+                    <div class="font-semibold">Connection Summary</div>
+                    <div>From: ${linkData.source.name || linkData.source.id}</div>
+                    <div>To: ${linkData.target.name || linkData.target.id}</div>
+                    <div>Traffic: ${this.formatBytes(linkData.totalBytes)} (${trafficPercent}%)</div>
+                    <div>Aggregated Flows: ${linkData.flowCount}</div>
+                    <div>Protocols: ${Array.from(linkData.protocols).join(', ')}</div>
+                    ${hasIPv6 ? '<div>🌐 Contains IPv6 traffic</div>' : '<div>📍 IPv4 only</div>'}
+                `;
+                
+                this.positionTooltip(tooltip, event);
+            }
+
+
+
+            getOrCreateTooltip() {
+                let tooltip = document.getElementById('flow-tooltip');
+                if (!tooltip) {
+                    tooltip = document.createElement('div');
+                    tooltip.id = 'flow-tooltip';
+                    tooltip.className = 'absolute bg-black text-white text-xs rounded p-2 pointer-events-none z-50 hidden';
+                    document.body.appendChild(tooltip);
+                }
+                tooltip.classList.remove('hidden');
+                return tooltip;
+            }
+
+            positionTooltip(tooltip, event) {
+                tooltip.style.left = (event.pageX + 10) + 'px';
+                tooltip.style.top = (event.pageY - 10) + 'px';
+            }
+
+            hideTooltip() {
+                const tooltip = document.getElementById('flow-tooltip');
+                if (tooltip) {
+                    tooltip.classList.add('hidden');
+                }
+            }
+
+            formatBytes(bytes) {
+                if (bytes === 0) return '0 B';
+                const k = 1024;
+                const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+
+            dragstarted(event, d) {
+                // Don't restart simulation to prevent jiggling
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            dragended(event, d) {
+                // Allow nodes to settle in new position without restarting simulation
+                d.fx = null;
+                d.fy = null;
+            }
+
+            toggleSidebar(show) {
+                const sidebar = document.getElementById('sidebar');
+                const expandBtn = document.getElementById('expandSidebar');
+                
+                if (show) {
+                    sidebar.classList.remove('collapsed');
+                    expandBtn.classList.add('hidden');
+                } else {
+                    sidebar.classList.add('collapsed');
+                    expandBtn.classList.remove('hidden');
+                }
+            }
+
+            updateStats() {
+                // Count only machines with flows
+                const machinesWithFlows = this.networkData?.devices?.filter(device => {
+                    return this.networkData.flows.some(flow => 
+                        flow.sourceDevice?.id === device.id || 
+                        flow.destinationDevice?.id === device.id ||
+                        device.addresses?.some(addr => {
+                            const ip = addr.split('/')[0];
+                            return flow.sourceIP === ip || flow.destinationIP === ip;
+                        })
+                    );
+                }).length || 0;
+                
+                const flowCount = this.filteredFlows?.length || 0;
+                const totalFlows = this.networkData?.flows?.length || 0;
+                
+                // Calculate tailnet throughput
+                const timeRange = this.networkData?.timeRange;
+                let throughput = 0;
+                if (timeRange && this.filteredFlows?.length > 0) {
+                    const totalBytes = this.filteredFlows.reduce((sum, flow) => sum + (flow.totalBytes || 0), 0);
+                    const durationSeconds = (new Date(timeRange.end) - new Date(timeRange.start)) / 1000;
+                    if (durationSeconds > 0) {
+                        throughput = totalBytes / durationSeconds;
+                    }
+                }
+                
+                document.getElementById('deviceCount').textContent = `${machinesWithFlows} active machine${machinesWithFlows !== 1 ? 's' : ''}`;
+                document.getElementById('tailnetThroughput').textContent = this.formatBytes(throughput) + '/s';
+                
+                if (flowCount < totalFlows) {
+                    document.getElementById('flowCount').textContent = `${flowCount}/${totalFlows} flows`;
+                } else {
+                    document.getElementById('flowCount').textContent = `${flowCount} flow${flowCount !== 1 ? 's' : ''}`;
+                }
+            }
+
+            setTimeRange(range) {
+                const end = new Date();
+                let start;
+                
+                switch(range) {
+                    case '1h':
+                        start = new Date(end.getTime() - 60 * 60 * 1000);
+                        break;
+                    case '6h':
+                        start = new Date(end.getTime() - 6 * 60 * 60 * 1000);
+                        break;
+                    case '24h':
+                        start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
+                        break;
+                    case '7d':
+                        start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+                        break;
+                }
+                
+                document.getElementById('startTime').value = this.formatDateTimeLocal(start);
+                document.getElementById('endTime').value = this.formatDateTimeLocal(end);
+            }
+
+            formatDateTimeLocal(date) {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                return `${year}-${month}-${day}T${hours}:${minutes}`;
+            }
+
+            renderDeviceMetadataBoxes(deviceNodes) {
+                deviceNodes.each(function(d) {
+                    const nodeGroup = d3.select(this);
+                    
+                    // Calculate device traffic
+                    const deviceFlows = window.tsflowApp.filteredFlows.filter(flow => 
+                        flow.sourceDevice?.id === d.device.id || flow.destinationDevice?.id === d.device.id
+                    );
+                    const totalTraffic = deviceFlows.reduce((sum, flow) => sum + (flow.totalBytes || 0), 0);
+                    
+                    // Box dimensions
+                    const boxWidth = 120;
+                    const boxHeight = 60;
+                    
+                    // Simple online status determination
+                    const deviceOnline = window.tsflowApp.isDeviceOnline(d.device);
+                    
+                    // Main background box with consistent online status
+                    nodeGroup.append("rect")
+                        .attr("x", -boxWidth/2)
+                        .attr("y", -boxHeight/2)
+                        .attr("width", boxWidth)
+                        .attr("height", boxHeight)
+                        .attr("rx", 8)
+                        .attr("fill", deviceOnline ? "#1e293b" : "#0f172a")
+                        .attr("stroke", () => {
+                            if (window.tsflowApp.selectedDevice && d.device?.id === window.tsflowApp.selectedDevice.id) {
+                                return "#f59e0b";
+                            }
+                            if (window.tsflowApp.focusedDevice && d.device?.id === window.tsflowApp.focusedDevice.id) {
+                                return "#f97316";
+                            }
+                            return deviceOnline ? "#10b981" : "#64748b";
+                        })
+                        .attr("stroke-width", () => {
+                            if (window.tsflowApp.selectedDevice && d.device?.id === window.tsflowApp.selectedDevice.id) {
+                                return 3;
+                            }
+                            if (window.tsflowApp.focusedDevice && d.device?.id === window.tsflowApp.focusedDevice.id) {
+                                return 3;
+                            }
+                            return 2;
+                        });
+                    
+                    // Status indicator
+                    nodeGroup.append("circle")
+                        .attr("cx", boxWidth/2 - 8)
+                        .attr("cy", -boxHeight/2 + 8)
+                        .attr("r", 4)
+                        .attr("fill", deviceOnline ? "#10b981" : "#64748b");
+                    
+                    // Device name (truncated)
+                    const deviceName = d.device.name || d.device.hostname || 'Unknown';
+                    nodeGroup.append("text")
+                        .text(deviceName.length > 14 ? deviceName.substring(0, 11) + '...' : deviceName)
+                        .attr("x", 0)
+                        .attr("y", -15)
+                        .attr("text-anchor", "middle")
+                        .attr("font-size", "11px")
+                        .attr("font-weight", "600")
+                        .attr("fill", "#f8fafc");
+                    
+                    // OS and IP info
+                    const osText = d.device.os || 'Unknown';
+                    const ipCount = d.device.addresses?.length || 0;
+                    nodeGroup.append("text")
+                        .text(`${osText} • ${ipCount} IP${ipCount !== 1 ? 's' : ''}`)
+                        .attr("x", 0)
+                        .attr("y", -2)
+                        .attr("text-anchor", "middle")
+                        .attr("font-size", "9px")
+                        .attr("fill", "#94a3b8");
+                    
+                    // Traffic info
+                    if (totalTraffic > 0) {
+                        nodeGroup.append("text")
+                            .text(window.tsflowApp.formatBytes(totalTraffic))
+                            .attr("x", 0)
+                            .attr("y", 12)
+                            .attr("text-anchor", "middle")
+                            .attr("font-size", "9px")
+                            .attr("font-weight", "500")
+                            .attr("fill", "#10b981");
+                    }
+                    
+                    // Tags (if any)
+                    if (d.device.tags && d.device.tags.length > 0) {
+                        const tagText = d.device.tags.slice(0, 2).join(', ');
+                        const displayText = d.device.tags.length > 2 ? tagText + '...' : tagText;
+                        nodeGroup.append("text")
+                            .text(displayText)
+                            .attr("x", 0)
+                            .attr("y", 25)
+                            .attr("text-anchor", "middle")
+                            .attr("font-size", "8px")
+                            .attr("fill", "#3b82f6");
+                    }
+                });
+            }
+
+            renderExternalNodes(externalNodes) {
+                externalNodes.each(function(d) {
+                    const nodeGroup = d3.select(this);
+                    
+                    // Simple box for external IPs
+                    const boxWidth = 70;
+                    const boxHeight = 30;
+                    
+                    nodeGroup.append("rect")
+                        .attr("x", -boxWidth/2)
+                        .attr("y", -boxHeight/2)
+                        .attr("width", boxWidth)
+                        .attr("height", boxHeight)
+                        .attr("rx", 4)
+                        .attr("class", "external-ip-card")
+                        .attr("fill", "#7c2d12")
+                        .attr("stroke", "#ea580c")
+                        .attr("stroke-width", 1.5);
+                    
+                    // External IP label (truncated)
+                    const ipText = d.name.length > 12 ? d.name.substring(0, 9) + '...' : d.name;
+                    nodeGroup.append("text")
+                        .text(ipText)
+                        .attr("x", 0)
+                        .attr("y", 4)
+                        .attr("text-anchor", "middle")
+                        .attr("font-size", "9px")
+                        .attr("font-weight", "500")
+                        .attr("fill", "#fed7aa");
+                });
+            }
+
+            exportTailnetData() {
+                if (!this.networkData) return;
+                
+                const data = {
+                    exportTime: new Date().toISOString(),
+                    tailnet: {
+                        timeRange: this.networkData.timeRange,
+                        machines: this.networkData.devices,
+                        flows: this.filteredFlows,
+                        exportedBy: 'TSFlow Tailnet Visualizer'
+                    }
+                };
+                
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `tailnet-flow-export-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+        }
+
+        // Initialize the app when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            window.tsflowApp = new TSFlowApp();
+        });
+    </script>
+</body>
+</html> 
