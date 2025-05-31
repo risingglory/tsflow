@@ -12,6 +12,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o tsflow .
 
 FROM alpine:latest
 
+# Add OCI labels for proper GitHub repository linking
+LABEL org.opencontainers.image.source=https://github.com/rajsinghtech/tsflow
+LABEL org.opencontainers.image.description="Network flow viewer for Tailscale networks"
+LABEL org.opencontainers.image.licenses=MIT
+
 RUN apk --no-cache add ca-certificates
 RUN adduser -D -s /bin/sh tsflow
 
