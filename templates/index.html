@@ -2921,27 +2921,44 @@
                 const links = this.svg.selectAll('.flow-line');
                 
                 links.each(function(d) {
-                    // Check if this link matches the clicked flow - more comprehensive matching
+                    // Check if this link matches the clicked flow - EXACT matching for precision
                     const matchesFlow = d.flows && d.flows.some(linkFlow => {
-                        // Direct IP match (both directions)
-                        const ipMatch = (linkFlow.sourceIP === flow.sourceIP && 
-                                        linkFlow.destinationIP === flow.destinationIP) ||
-                                       (linkFlow.destinationIP === flow.sourceIP && 
-                                        linkFlow.sourceIP === flow.destinationIP);
+                        // Must match protocol first
+                        if (linkFlow.protocol !== flow.protocol) return false;
                         
-                        // Device ID match (both directions)
-                        const deviceMatch = (linkFlow.sourceDevice?.id === flow.sourceDevice?.id &&
-                                           linkFlow.destinationDevice?.id === flow.destinationDevice?.id) ||
-                                          (linkFlow.destinationDevice?.id === flow.sourceDevice?.id &&
-                                           linkFlow.sourceDevice?.id === flow.destinationDevice?.id);
+                        // Must match IPs and ports exactly (both directions)
+                        const exactMatch1 = (linkFlow.sourceIP === flow.sourceIP && 
+                                           linkFlow.destinationIP === flow.destinationIP &&
+                                           linkFlow.sourcePort === flow.sourcePort &&
+                                           linkFlow.destinationPort === flow.destinationPort);
                         
-                        // Mixed device-IP match (for external flows)
-                        const mixedMatch = (linkFlow.sourceDevice?.id === flow.sourceDevice?.id && linkFlow.destinationIP === flow.destinationIP) ||
-                                         (linkFlow.destinationDevice?.id === flow.destinationDevice?.id && linkFlow.sourceIP === flow.sourceIP) ||
-                                         (linkFlow.sourceIP === flow.sourceIP && linkFlow.destinationDevice?.id === flow.destinationDevice?.id) ||
-                                         (linkFlow.destinationIP === flow.destinationIP && linkFlow.sourceDevice?.id === flow.sourceDevice?.id);
+                        const exactMatch2 = (linkFlow.sourceIP === flow.destinationIP && 
+                                           linkFlow.destinationIP === flow.sourceIP &&
+                                           linkFlow.sourcePort === flow.destinationPort &&
+                                           linkFlow.destinationPort === flow.sourcePort);
                         
-                        return ipMatch || deviceMatch || mixedMatch;
+                        // For flows without ports, just match IPs and protocol
+                        const noPortMatch1 = (!linkFlow.sourcePort && !linkFlow.destinationPort && 
+                                             !flow.sourcePort && !flow.destinationPort &&
+                                             linkFlow.sourceIP === flow.sourceIP && 
+                                             linkFlow.destinationIP === flow.destinationIP);
+                        
+                        const noPortMatch2 = (!linkFlow.sourcePort && !linkFlow.destinationPort && 
+                                             !flow.sourcePort && !flow.destinationPort &&
+                                             linkFlow.sourceIP === flow.destinationIP && 
+                                             linkFlow.destinationIP === flow.sourceIP);
+                        
+                        // If available, also check timestamp for ultra-precise matching
+                        if (exactMatch1 || exactMatch2 || noPortMatch1 || noPortMatch2) {
+                            // If timestamps are available and close enough (within same second), prefer that
+                            if (linkFlow.timestamp && flow.timestamp) {
+                                const timeDiff = Math.abs(new Date(linkFlow.timestamp) - new Date(flow.timestamp));
+                                return timeDiff < 5000; // Within 5 seconds
+                            }
+                            return true;
+                        }
+                        
+                        return false;
                     });
                     
                     if (matchesFlow) {
@@ -2969,24 +2986,30 @@
                     }
                 });
                 
-                // If no exact match found, try to match by device pairs
+                // If no exact match found, try a more relaxed match (protocol + IPs only, ignore ports)
                 if (!highlightFound) {
+                    console.log('No exact match found, trying relaxed matching...');
                     links.each(function(d) {
-                        const sourceDeviceMatch = (d.source.device && flow.sourceDevice && 
-                                                 d.source.device.id === flow.sourceDevice.id) ||
-                                                (d.target.device && flow.sourceDevice &&
-                                                 d.target.device.id === flow.sourceDevice.id);
-                        const destDeviceMatch = (d.target.device && flow.destinationDevice &&
-                                               d.target.device.id === flow.destinationDevice.id) ||
-                                              (d.source.device && flow.destinationDevice &&
-                                               d.source.device.id === flow.destinationDevice.id);
-                                               
-                        if (sourceDeviceMatch && destDeviceMatch) {
-                            // Highlight with slightly different style for device-level match
+                        const relaxedMatch = d.flows && d.flows.some(linkFlow => {
+                            // Must still match protocol
+                            if (linkFlow.protocol !== flow.protocol) return false;
+                            
+                            // Match IPs only (both directions)
+                            const ipMatch1 = (linkFlow.sourceIP === flow.sourceIP && 
+                                            linkFlow.destinationIP === flow.destinationIP);
+                            const ipMatch2 = (linkFlow.sourceIP === flow.destinationIP && 
+                                            linkFlow.destinationIP === flow.sourceIP);
+                            
+                            return ipMatch1 || ipMatch2;
+                        });
+                        
+                        if (relaxedMatch) {
+                            console.log('Found relaxed match (protocol + IPs)');
+                            // Highlight with slightly different style for relaxed match
                             d3.select(this)
-                                .style('stroke-width', '10px')
-                                .style('opacity', '1')
-                                .style('stroke', '#8b5cf6') // Purple highlight for device match
+                                .style('stroke-width', '8px')
+                                .style('opacity', '0.8')
+                                .style('stroke', '#8b5cf6') // Purple highlight for relaxed match
                                 .classed('highlighted-flow', true);
                                 
                             highlightFound = true;
