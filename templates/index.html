@@ -23,6 +23,8 @@
         .flow-line { opacity: 0.9; }
         .flow-line.tcp { stroke: #3b82f6; }
         .flow-line.udp { stroke: #10b981; }
+        .flow-line.icmp { stroke: #f59e0b; }
+        .flow-line.proto-0 { stroke: #ef4444; }
         .flow-line.mixed { stroke: #8b5cf6; }
         .flow-line:hover { opacity: 1; }
         .flow-line.subnet { stroke-dasharray: 5,5; }
@@ -86,6 +88,27 @@
         .btn-primary:hover { background: #2563eb; }
         .section-header { color: #94a3b8; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
         
+        /* Flow Log Viewer Styles */
+        #flowLogViewer {
+            box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        #flowLogViewer thead {
+            background-color: #374151 !important;
+        }
+        
+        #flowLogViewer thead th {
+            background-color: #374151 !important;
+        }
+        
+        #flowLogBody tr:hover {
+            background-color: #374151;
+        }
+        
+        .max-w-32 {
+            max-width: 8rem;
+        }
+
         /* Responsive design */
         @media (max-width: 1024px) {
             .sidebar { width: 280px; }
@@ -93,9 +116,12 @@
         @media (max-width: 768px) {
             .sidebar { width: 260px; }
             .search-bar { padding: 1rem; }
+            #flowLogViewer { height: 250px !important; }
+            #flowLogViewer.collapsed { height: 49px !important; }
         }
         @media (max-width: 640px) {
             .sidebar.collapsed { transform: translateX(-100%); }
+            #flowLogViewer { height: 200px !important; }
         }
     </style>
 </head>
@@ -234,6 +260,7 @@
                             <option value="TCP">TCP</option>
                             <option value="UDP">UDP</option>
                             <option value="ICMP">ICMP</option>
+                            <option value="proto-0">Proto-0</option>
                         </select>
                         <select id="quickFilterTraffic" class="px-3 py-2 rounded text-sm">
                             <option value="0">All Traffic</option>
@@ -243,8 +270,8 @@
                             <option value="1000">1+ GB</option>
                         </select>
                         <label class="flex items-center space-x-2 px-3 py-2 border border-slate-600 rounded hover:bg-slate-600 cursor-pointer">
-                            <input type="checkbox" id="hideExternalIPs" class="text-blue-500">
-                            <span class="text-sm text-slate-300">Hide External IPs</span>
+                            <input type="checkbox" id="showExternalIPs" class="text-blue-500" checked>
+                            <span class="text-sm text-slate-300">External IPs</span>
                         </label>
                     </div>
                     <div class="flex items-center space-x-2">
@@ -291,16 +318,48 @@
                 <svg id="networkMap" class="w-full h-full"></svg>
             </div>
 
-            <!-- Flow Details Panel -->
-            <div id="flowDetails" class="hidden bg-white border-t border-gray-200 p-6">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold text-gray-800">Flow Details</h3>
-                    <button id="closeFlowDetails" class="text-gray-500 hover:text-gray-700">
-                        <i class="fas fa-times"></i>
-                    </button>
+            <!-- Flow Log Viewer (Hubble UI style) -->
+            <div id="flowLogViewer" class="bg-slate-800 border-t border-slate-600 transition-all duration-300" style="height: 300px;">
+                <div class="flex items-center justify-between p-3 bg-slate-700 border-b border-slate-600">
+                    <div class="flex items-center space-x-3">
+                        <h3 class="text-sm font-semibold text-slate-200 flex items-center">
+                            <i class="fas fa-stream mr-2 text-blue-400"></i>
+                            Flow Logs
+                        </h3>
+                        <div class="flex items-center space-x-2 text-xs text-slate-400">
+                            <span id="flowLogCount">0 flows</span>
+                            <span>•</span>
+                            <span id="flowLogRate">0/s</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button id="exportFlowLogs" class="p-1.5 rounded hover:bg-slate-600 transition-all text-slate-300" title="Export Logs">
+                            <i class="fas fa-download text-xs"></i>
+                        </button>
+                        <button id="toggleFlowViewer" class="p-1.5 rounded hover:bg-slate-600 transition-all text-slate-300" title="Collapse/Expand">
+                            <i class="fas fa-chevron-down text-xs"></i>
+                        </button>
+                    </div>
                 </div>
-                <div id="flowInfo" class="grid grid-cols-2 gap-4">
-                    <!-- Flow details will be populated here -->
+                <div id="flowLogContent" class="overflow-auto" style="height: calc(100% - 49px);">
+                    <table class="w-full text-xs">
+                        <thead class="bg-slate-700 sticky top-0 z-10">
+                            <tr class="border-b border-slate-600">
+                                <th class="text-left p-2 text-slate-300 font-medium">Time</th>
+                                <th class="text-left p-2 text-slate-300 font-medium">Source</th>
+                                <th class="text-left p-2 text-slate-300 font-medium">Destination</th>
+                                <th class="text-left p-2 text-slate-300 font-medium">Protocol</th>
+                                <th class="text-left p-2 text-slate-300 font-medium">Port</th>
+                                <th class="text-left p-2 text-slate-300 font-medium">Bytes</th>
+                                <th class="text-left p-2 text-slate-300 font-medium">Flows</th>
+                                <th class="text-left p-2 text-slate-300 font-medium">Type</th>
+                                <th class="text-left p-2 text-slate-300 font-medium">Verdict</th>
+                            </tr>
+                        </thead>
+                        <tbody id="flowLogBody" class="divide-y divide-slate-700">
+                            <!-- Flow log entries will be populated here -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -329,10 +388,13 @@
                 this.searchQuery = '';
                 this.quickProtocol = '';
                 this.quickTrafficMB = 0;
-                this.hideExternalIPs = false;
+                this.showExternalIPs = true;
                 this.showVirtualTraffic = true;
                 this.showPhysicalTraffic = true;
                 this.showSubnetTraffic = true;
+                this.flowLogCollapsed = false;
+                this.flowLogEntries = [];
+                this.maxFlowLogEntries = 1000;
                 
                 this.initializeApp();
             }
@@ -395,8 +457,8 @@
                     this.applyDynamicFilters();
                 });
 
-                document.getElementById('hideExternalIPs').addEventListener('change', (e) => {
-                    this.hideExternalIPs = e.target.checked;
+                document.getElementById('showExternalIPs').addEventListener('change', (e) => {
+                    this.showExternalIPs = e.target.checked;
                     this.applyDynamicFilters();
                 });
 
@@ -447,8 +509,12 @@
                     this.exportTailnetData();
                 });
 
-                document.getElementById('closeFlowDetails').addEventListener('click', () => {
-                    document.getElementById('flowDetails').classList.add('hidden');
+                document.getElementById('toggleFlowViewer').addEventListener('click', () => {
+                    this.toggleFlowViewer();
+                });
+
+                document.getElementById('exportFlowLogs').addEventListener('click', () => {
+                    this.exportFlowLogs();
                 });
             }
 
@@ -798,14 +864,21 @@
                     if (!this.showSubnetTraffic && flow.flowType === 'subnet') return false;
                     
                     // Quick protocol filter
-                    if (this.quickProtocol && flow.protocol !== this.quickProtocol) return false;
+                    if (this.quickProtocol) {
+                        if (this.quickProtocol === 'proto-0') {
+                            // Handle proto-0 specifically (could be "0", "proto-0", or similar)
+                            if (flow.protocol !== 'proto-0' && flow.protocol !== '0') return false;
+                        } else if (flow.protocol !== this.quickProtocol) {
+                            return false;
+                        }
+                    }
                     
                     // Quick traffic filter
                     const trafficMB = (flow.totalBytes || 0) / (1024 * 1024);
                     if (this.quickTrafficMB > 0 && trafficMB < this.quickTrafficMB) return false;
                     
-                    // Hide external IPs filter
-                    if (this.hideExternalIPs) {
+                    // External IPs filter
+                    if (!this.showExternalIPs) {
                         // Only show flows between known devices (both source and destination must have device info)
                         if (!flow.sourceDevice || !flow.destinationDevice) return false;
                     }
@@ -844,6 +917,7 @@
                 this.renderVisualization();
                 this.updateStats();
                 this.updateActiveFilters();
+                this.updateFlowLogs();
             }
 
             matchesSearchQuery(flow, query) {
@@ -925,18 +999,20 @@
                 document.getElementById('dynamicSearch').value = '';
                 document.getElementById('quickFilterProtocol').value = '';
                 document.getElementById('quickFilterTraffic').value = '0';
-                document.getElementById('hideExternalIPs').checked = false;
+                document.getElementById('showExternalIPs').checked = true;
                 document.getElementById('showVirtualTraffic').checked = true;
                 document.getElementById('showPhysicalTraffic').checked = true;
                 document.getElementById('showSubnetTraffic').checked = true;
                 this.searchQuery = '';
                 this.quickProtocol = '';
                 this.quickTrafficMB = 0;
-                this.hideExternalIPs = false;
+                this.showExternalIPs = true;
                 this.showVirtualTraffic = true;
                 this.showPhysicalTraffic = true;
                 this.showSubnetTraffic = true;
                 this.focusedDevice = null;
+                this.flowLogCollapsed = false;
+                this.flowLogEntries = [];
                 this.applyDynamicFilters();
             }
 
@@ -952,7 +1028,7 @@
                 
                 if (this.quickProtocol) filters.push(`Protocol: ${this.quickProtocol}`);
                 if (this.quickTrafficMB > 0) filters.push(`Traffic: ${this.quickTrafficMB}+ MB`);
-                if (this.hideExternalIPs) filters.push('Internal traffic only');
+                if (!this.showExternalIPs) filters.push('External IPs hidden');
                 if (!this.showVirtualTraffic) filters.push('Virtual traffic hidden');
                 if (!this.showPhysicalTraffic) filters.push('Physical traffic hidden');
                 if (!this.showSubnetTraffic) filters.push('Subnet traffic hidden');
@@ -1111,9 +1187,15 @@
                     .join("line")
                     .attr("class", "flow-line")
                     .attr("stroke", d => {
-                        if (d.protocols.has('TCP') && d.protocols.has('UDP')) return "#8b5cf6";
+                        // Handle mixed protocols
+                        if (d.protocols.size > 1) return "#8b5cf6";
+                        
+                        // Single protocol colors
                         if (d.protocols.has('TCP')) return "#3b82f6";
                         if (d.protocols.has('UDP')) return "#10b981";
+                        if (d.protocols.has('ICMP')) return "#f59e0b";
+                        if (d.protocols.has('proto-0')) return "#ef4444";
+                        
                         return "#6b7280";
                     })
                     .attr("stroke-dasharray", d => {
@@ -1224,26 +1306,47 @@
                 return clusters;
             }
 
-            calculateClusterPositions(numClusters, width, height) {
-                const positions = [];
-                const margin = 200; // Increased margin for better spacing
+            calculateClusterPositions(clusters, nodeConnections, width, height) {
                 const centerX = width / 2;
                 const centerY = height / 2;
                 
+                // Calculate cluster connectivity and size
+                const clusterData = clusters.map((cluster, index) => {
+                    const connectivity = cluster.reduce((total, nodeId) => {
+                        return total + (nodeConnections.get(nodeId)?.size || 0);
+                    }, 0);
+                    return { 
+                        cluster, 
+                        connectivity, 
+                        size: cluster.length, 
+                        index,
+                        // Combined importance score
+                        importance: connectivity + (cluster.length * 2)
+                    };
+                });
+                
+                // Sort by importance (connectivity + size)
+                clusterData.sort((a, b) => b.importance - a.importance);
+                
+                const positions = [];
+                const numClusters = clusters.length;
+                
+                // More intuitive, closer positioning
                 if (numClusters === 1) {
                     positions.push({ x: centerX, y: centerY });
-                } else if (numClusters === 2) {
-                    positions.push({ x: width * 0.25, y: centerY }); // Further apart
-                    positions.push({ x: width * 0.75, y: centerY });
-                } else if (numClusters === 3) {
-                    positions.push({ x: centerX, y: height * 0.2 }); // More spread out
-                    positions.push({ x: width * 0.2, y: height * 0.8 });
-                    positions.push({ x: width * 0.8, y: height * 0.8 });
                 } else {
-                    // Arrange in circle for 4+ clusters with larger radius
-                    const radius = Math.min(width, height) * 0.35; // Larger radius for better spacing
-                    for (let i = 0; i < numClusters; i++) {
-                        const angle = (i / numClusters) * 2 * Math.PI;
+                    // Place most important cluster at center
+                    positions.push({ x: centerX, y: centerY });
+                    
+                    // For remaining clusters, use a tight spiral pattern
+                    const baseRadius = Math.min(width, height) * 0.15; // Much smaller base radius
+                    const radiusIncrement = baseRadius * 0.3; // Gentle radius increase
+                    
+                    for (let i = 1; i < numClusters; i++) {
+                        // Spiral outward with golden angle for even distribution
+                        const angle = i * 2.39996; // Golden angle in radians
+                        const radius = baseRadius + Math.sqrt(i) * radiusIncrement;
+                        
                         positions.push({
                             x: centerX + Math.cos(angle) * radius,
                             y: centerY + Math.sin(angle) * radius
@@ -1251,7 +1354,13 @@
                     }
                 }
                 
-                return positions;
+                // Map positions back to original cluster order
+                const orderedPositions = new Array(numClusters);
+                clusterData.forEach((cluster, sortedIndex) => {
+                    orderedPositions[cluster.index] = positions[sortedIndex];
+                });
+                
+                return orderedPositions;
             }
 
             recalculateClusters(nodes, links, width, height) {
@@ -1274,7 +1383,7 @@
                 
                 // Detect new clusters
                 const newClusters = this.detectClusters(nodes, nodeConnections, links);
-                const newClusterPositions = this.calculateClusterPositions(newClusters.length, width, height);
+                const newClusterPositions = this.calculateClusterPositions(newClusters, nodeConnections, width, height);
                 
                 // Update node cluster assignments and degrees
                 nodes.forEach(node => {
@@ -1301,14 +1410,14 @@
                 if (this.simulation) {
                     this.simulation.force("link").distance(d => {
                         if (d.source.cluster === d.target.cluster) {
-                            return 180; // Much longer intra-cluster links
+                            return 80; // Close intra-cluster links
                         }
-                        return 400; // Very long inter-cluster links
+                        return 150; // Moderate inter-cluster links
                     }).strength(d => {
                         if (d.source.cluster === d.target.cluster) {
-                            return 0.4;
+                            return 0.7;
                         }
-                        return 0.15;
+                        return 0.3;
                     });
                     
                     // Boost alpha slightly to respond to changes
@@ -1472,8 +1581,8 @@
                 // Simple clustering: group nodes that share many connections
                 const clusters = this.detectClusters(nodes, nodeConnections, links);
                 
-                // Assign cluster positions in a circle around the viewport
-                const clusterPositions = this.calculateClusterPositions(clusters.length, width, height);
+                // Assign cluster positions based on connectivity (most connected in center)
+                const clusterPositions = this.calculateClusterPositions(clusters, nodeConnections, width, height);
                 
                 // Add cluster and degree info to nodes, position them near cluster centers
                 nodes.forEach(node => {
@@ -1519,22 +1628,49 @@
                     }
                 }
                 
+                // Degree-based radial force - high degree nodes to center, low degree nodes outward
+                function degreeRadialForce(alpha) {
+                    const centerX = width / 2;
+                    const centerY = height / 2;
+                    const maxDegree = Math.max(...nodes.map(n => n.degree || 0));
+                    
+                    for (let node of nodes) {
+                        if (!node.fx && !node.fy && node.type === 'device') { // Only apply to unfixed device nodes
+                            const dx = centerX - node.x;
+                            const dy = centerY - node.y;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            
+                            if (distance > 0) {
+                                const degree = node.degree || 0;
+                                const normalizedDegree = maxDegree > 0 ? degree / maxDegree : 0;
+                                
+                                // High degree nodes get pulled toward center, low degree nodes get pushed outward
+                                const forceDirection = normalizedDegree > 0.3 ? 1 : -1; // Threshold for center vs outward
+                                const forceStrength = alpha * 0.05 * (normalizedDegree > 0.3 ? normalizedDegree : (1 - normalizedDegree));
+                                
+                                node.vx += (dx / distance) * forceDirection * forceStrength;
+                                node.vy += (dy / distance) * forceDirection * forceStrength;
+                            }
+                        }
+                    }
+                }
+                
                 // Clustering-based force simulation with much better spacing and center gravity
                 this.simulation = d3.forceSimulation(nodes)
                     .force("link", d3.forceLink(links).id(d => d.id)
                         .distance(d => {
-                            // Much longer links for automatic spreading
+                            // Shorter, more natural link distances
                             if (d.source.cluster === d.target.cluster) {
-                                return 180; // Much longer intra-cluster links
+                                return 80; // Close intra-cluster links
                             }
-                            return 400; // Very long inter-cluster links
+                            return 150; // Moderate inter-cluster links
                         })
                         .strength(d => {
-                            // Even weaker forces for natural spreading
+                            // Stronger forces for better organization
                             if (d.source.cluster === d.target.cluster) {
-                                return 0.4;
+                                return 0.7;
                             }
-                            return 0.15;
+                            return 0.3;
                         }))
                     .force("charge", d3.forceManyBody().strength(d => {
                         // Much stronger repulsion for automatic spreading
@@ -1545,6 +1681,7 @@
                         .strength(1.0))
                     .force("center", d3.forceCenter(width / 2, height / 2).strength(0.08)) // Stronger center gravity
                     .force("cluster", clusterForce)
+                    .force("degreeRadial", degreeRadialForce)
                     .alpha(0.5)
                     .alphaDecay(0.005)
                     .velocityDecay(0.5); // Even more fluid movement
@@ -1556,21 +1693,26 @@
                     .join("line")
                     .attr("class", "flow-line")
                     .attr("stroke", d => {
-
-                        if (d.protocols.has('TCP') && d.protocols.has('UDP')) return "#8b5cf6";
+                        // Handle mixed protocols
+                        if (d.protocols.size > 1) return "#8b5cf6";
+                        
+                        // Single protocol colors
                         if (d.protocols.has('TCP')) return "#3b82f6";
                         if (d.protocols.has('UDP')) return "#10b981";
+                        if (d.protocols.has('ICMP')) return "#f59e0b";
+                        if (d.protocols.has('proto-0')) return "#ef4444";
                         
-
                         return "#6b7280";
                     })
                     .attr("class", d => {
                         let classes = ["flow-line"];
                         
                         // Add protocol classes
-                        if (d.protocols.has('TCP') && d.protocols.has('UDP')) classes.push("mixed");
+                        if (d.protocols.size > 1) classes.push("mixed");
                         else if (d.protocols.has('TCP')) classes.push("tcp");
                         else if (d.protocols.has('UDP')) classes.push("udp");
+                        else if (d.protocols.has('ICMP')) classes.push("icmp");
+                        else if (d.protocols.has('proto-0')) classes.push("proto-0");
                         
                         // Add flow type classes
                         if (d.flowTypes.has('subnet')) classes.push("subnet");
@@ -2202,6 +2344,246 @@
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
+            }
+
+            // Flow Log Viewer Methods
+            toggleFlowViewer() {
+                const viewer = document.getElementById('flowLogViewer');
+                const toggleBtn = document.getElementById('toggleFlowViewer');
+                const icon = toggleBtn.querySelector('i');
+                
+                if (this.flowLogCollapsed) {
+                    viewer.style.height = '300px';
+                    icon.className = 'fas fa-chevron-down text-xs';
+                    this.flowLogCollapsed = false;
+                } else {
+                    viewer.style.height = '49px'; // Just header height
+                    icon.className = 'fas fa-chevron-up text-xs';
+                    this.flowLogCollapsed = true;
+                }
+            }
+
+
+
+            exportFlowLogs() {
+                if (this.flowLogEntries.length === 0) return;
+                
+                const csvHeaders = ['Time', 'Source', 'Destination', 'Protocol', 'Port', 'Bytes', 'Flows', 'Type', 'Verdict'];
+                const csvRows = this.flowLogEntries.map(entry => [
+                    entry.timestamp,
+                    entry.source,
+                    entry.destination,
+                    entry.protocol,
+                    entry.port || '',
+                    entry.bytes,
+                    entry.flowCount,
+                    entry.flowType,
+                    entry.verdict
+                ].map(field => `"${field}"`).join(','));
+                
+                const csvContent = [csvHeaders.join(','), ...csvRows].join('\n');
+                const blob = new Blob([csvContent], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `tsflow-logs-${new Date().toISOString().split('T')[0]}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+
+            updateFlowLogs() {
+                if (!this.networkData?.flows) return;
+                
+                // Apply the same filters as the map to individual flows (not aggregated)
+                let filtered = this.networkData.flows.filter(flow => {
+                    // Flow type filter
+                    if (!this.showVirtualTraffic && flow.flowType === 'virtual') return false;
+                    if (!this.showPhysicalTraffic && flow.flowType === 'physical') return false;
+                    if (!this.showSubnetTraffic && flow.flowType === 'subnet') return false;
+                    
+                    // Quick protocol filter
+                    if (this.quickProtocol) {
+                        if (this.quickProtocol === 'proto-0') {
+                            // Handle proto-0 specifically (could be "0", "proto-0", or similar)
+                            if (flow.protocol !== 'proto-0' && flow.protocol !== '0') return false;
+                        } else if (flow.protocol !== this.quickProtocol) {
+                            return false;
+                        }
+                    }
+                    
+                    // Quick traffic filter
+                    const trafficMB = (flow.totalBytes || 0) / (1024 * 1024);
+                    if (this.quickTrafficMB > 0 && trafficMB < this.quickTrafficMB) return false;
+                    
+                    // External IPs filter
+                    if (!this.showExternalIPs) {
+                        if (!flow.sourceDevice || !flow.destinationDevice) return false;
+                    }
+                    
+                    // Focus device filter
+                    if (this.focusedDevice) {
+                        const isConnected = (flow.sourceDevice?.id === this.focusedDevice.id) ||
+                                          (flow.destinationDevice?.id === this.focusedDevice.id) ||
+                                          (flow.sourceIP === this.getDeviceMainIP(this.focusedDevice)) ||
+                                          (flow.destinationIP === this.getDeviceMainIP(this.focusedDevice));
+                        if (!isConnected) return false;
+                    }
+                    
+                    // Dynamic search query
+                    if (this.searchQuery) {
+                        return this.matchesSearchQuery(flow, this.searchQuery);
+                    }
+                    
+                    return true;
+                });
+                
+                // Sort by most recent first
+                filtered.sort((a, b) => {
+                    const aTime = new Date(a.lastSeen || a.startTime || 0);
+                    const bTime = new Date(b.lastSeen || b.startTime || 0);
+                    return bTime - aTime;
+                });
+                
+                // Convert individual flows to log entries
+                const newEntries = filtered.slice(0, this.maxFlowLogEntries).map(flow => {
+                    const sourceDevice = flow.sourceDevice?.name || flow.sourceDevice?.hostname || flow.sourceIP;
+                    const destDevice = flow.destinationDevice?.name || flow.destinationDevice?.hostname || flow.destinationIP;
+                    
+                    return {
+                        timestamp: flow.lastSeen || flow.startTime || new Date().toISOString(),
+                        source: sourceDevice,
+                        destination: destDevice,
+                        protocol: flow.protocol,
+                        port: flow.destinationPort || flow.sourcePort || '',
+                        bytes: flow.totalBytes || 0,
+                        flowCount: 1, // Individual flows always have count of 1
+                        flowType: flow.flowType || 'unknown',
+                        verdict: this.getFlowVerdict(flow),
+                        flow: flow // Keep reference for click handling
+                    };
+                });
+                
+                this.flowLogEntries = newEntries;
+                this.updateFlowLogDisplay();
+            }
+
+            getFlowVerdict(flow) {
+                // Simple verdict logic
+                if (flow.totalBytes > 0) return 'ALLOWED';
+                if (flow.denied) return 'DENIED';
+                return 'ALLOWED';
+            }
+
+            updateFlowLogDisplay() {
+                const tbody = document.getElementById('flowLogBody');
+                const countElement = document.getElementById('flowLogCount');
+                const rateElement = document.getElementById('flowLogRate');
+                
+                // Update count
+                countElement.textContent = `${this.flowLogEntries.length} flows`;
+                
+                // Calculate rate based on time range
+                if (this.networkData?.timeRange) {
+                    const start = new Date(this.networkData.timeRange.start);
+                    const end = new Date(this.networkData.timeRange.end);
+                    const durationSeconds = (end - start) / 1000;
+                    const rate = durationSeconds > 0 ? Math.round(this.flowLogEntries.length / durationSeconds) : 0;
+                    rateElement.textContent = `${rate}/s avg`;
+                } else {
+                    rateElement.textContent = '0/s';
+                }
+                
+                // Update table
+                tbody.innerHTML = '';
+                this.flowLogEntries.slice(0, 100).forEach(entry => {
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-slate-700 cursor-pointer';
+                    
+                    const time = new Date(entry.timestamp).toLocaleTimeString();
+                    const bytes = this.formatBytes(entry.bytes);
+                    
+                    // Add verdict styling
+                    const verdictClass = entry.verdict === 'ALLOWED' ? 'text-green-400' : 'text-red-400';
+                    let protocolClass = 'text-purple-400'; // default
+                    if (entry.protocol === 'TCP') protocolClass = 'text-blue-400';
+                    else if (entry.protocol === 'UDP') protocolClass = 'text-green-400';
+                    else if (entry.protocol === 'ICMP') protocolClass = 'text-orange-400';
+                    else if (entry.protocol === 'proto-0') protocolClass = 'text-red-400';
+                    
+                    row.innerHTML = `
+                        <td class="p-2 text-slate-300">${time}</td>
+                        <td class="p-2 text-slate-200 truncate max-w-32" title="${entry.source}">${entry.source}</td>
+                        <td class="p-2 text-slate-200 truncate max-w-32" title="${entry.destination}">${entry.destination}</td>
+                        <td class="p-2 ${protocolClass} font-medium">${entry.protocol}</td>
+                        <td class="p-2 text-slate-300">${entry.port}</td>
+                        <td class="p-2 text-yellow-400">${bytes}</td>
+                        <td class="p-2 text-slate-300">${entry.flowCount}</td>
+                        <td class="p-2 text-slate-400">${entry.flowType}</td>
+                        <td class="p-2 ${verdictClass} font-medium">${entry.verdict}</td>
+                    `;
+                    
+                    // Add click handler to highlight corresponding flow in visualization
+                    row.addEventListener('click', () => {
+                        if (entry.flow) {
+                            this.highlightFlow(entry.flow);
+                        }
+                    });
+                    
+                    tbody.appendChild(row);
+                });
+            }
+
+            highlightFlow(flow) {
+                if (!this.svg) return;
+                
+                // Clear any existing highlights
+                this.svg.selectAll('.flow-line').style('stroke-width', null).style('opacity', null);
+                this.svg.selectAll('.node').style('stroke-width', null).style('stroke', null);
+                
+                // Find the corresponding link in the visualization
+                const links = this.svg.selectAll('.flow-line');
+                
+                links.each(function(d) {
+                    // Check if this link matches the clicked flow
+                    const matchesFlow = d.flows && d.flows.some(linkFlow => {
+                        return (linkFlow.sourceIP === flow.sourceIP && 
+                                linkFlow.destinationIP === flow.destinationIP &&
+                                linkFlow.protocol === flow.protocol) ||
+                               (linkFlow.sourceDevice?.id === flow.sourceDevice?.id &&
+                                linkFlow.destinationDevice?.id === flow.destinationDevice?.id &&
+                                linkFlow.protocol === flow.protocol);
+                    });
+                    
+                    if (matchesFlow) {
+                        // Highlight the link
+                        d3.select(this)
+                            .style('stroke-width', '8px')
+                            .style('opacity', '1')
+                            .style('stroke', '#fbbf24'); // Yellow highlight
+                        
+                        // Highlight connected nodes
+                        const sourceNode = d.source;
+                        const targetNode = d.target;
+                        
+                        window.tsflowApp.svg.selectAll('.node').each(function(nodeData) {
+                            if (nodeData.id === sourceNode.id || nodeData.id === targetNode.id) {
+                                d3.select(this).select('rect')
+                                    .style('stroke', '#fbbf24')
+                                    .style('stroke-width', '3px');
+                            }
+                        });
+                    }
+                });
+                
+                // Auto-clear highlight after 3 seconds
+                setTimeout(() => {
+                    if (this.svg) {
+                        this.svg.selectAll('.flow-line').style('stroke-width', null).style('opacity', null).style('stroke', null);
+                        this.svg.selectAll('.node rect').style('stroke-width', null).style('stroke', null);
+                    }
+                }, 3000);
             }
         }
 
