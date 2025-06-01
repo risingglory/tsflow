@@ -1,10 +1,14 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TSFlow - Tailnet Flow Visualizer</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%233b82f6'%3E%3Cpath d='M12 2L2 7v10c0 5.55 3.84 9.74 9 11 5.16-1.26 9-5.45 9-11V7l-10-5z'/%3E%3Ccircle cx='8' cy='10' r='1.5' fill='white'/%3E%3Ccircle cx='16' cy='10' r='1.5' fill='white'/%3E%3Ccircle cx='12' cy='14' r='1.5' fill='white'/%3E%3Cline x1='8' y1='10' x2='12' y2='14' stroke='white' stroke-width='1'/%3E%3Cline x1='16' y1='10' x2='12' y2='14' stroke='white' stroke-width='1'/%3E%3C/svg%3E">
+    <link rel="shortcut icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%233b82f6'%3E%3Cpath d='M12 2L2 7v10c0 5.55 3.84 9.74 9 11 5.16-1.26 9-5.45 9-11V7l-10-5z'/%3E%3Ccircle cx='8' cy='10' r='1.5' fill='white'/%3E%3Ccircle cx='16' cy='10' r='1.5' fill='white'/%3E%3Ccircle cx='12' cy='14' r='1.5' fill='white'/%3E%3Cline x1='8' y1='10' x2='12' y2='14' stroke='white' stroke-width='1'/%3E%3Cline x1='16' y1='10' x2='12' y2='14' stroke='white' stroke-width='1'/%3E%3C/svg%3E">
+    
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -21,6 +25,9 @@
         .flow-line.udp { stroke: #10b981; }
         .flow-line.mixed { stroke: #8b5cf6; }
         .flow-line:hover { opacity: 1; }
+        .flow-line.subnet { stroke-dasharray: 5,5; }
+        .flow-line.physical { stroke-dasharray: none; }
+        .flow-line.virtual { stroke-dasharray: 2,2; }
         .sidebar { 
             background: #1e293b; 
             border-right: 1px solid #334155; 
@@ -239,6 +246,20 @@
                             <input type="checkbox" id="hideExternalIPs" class="text-blue-500">
                             <span class="text-sm text-slate-300">Hide External IPs</span>
                         </label>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <label class="flex items-center space-x-2 px-3 py-2 border border-slate-600 rounded hover:bg-slate-600 cursor-pointer">
+                            <input type="checkbox" id="showVirtualTraffic" class="text-blue-500" checked>
+                            <span class="text-sm text-slate-300">Virtual</span>
+                        </label>
+                        <label class="flex items-center space-x-2 px-3 py-2 border border-slate-600 rounded hover:bg-slate-600 cursor-pointer">
+                            <input type="checkbox" id="showPhysicalTraffic" class="text-blue-500" checked>
+                            <span class="text-sm text-slate-300">Physical</span>
+                        </label>
+                        <label class="flex items-center space-x-2 px-3 py-2 border border-slate-600 rounded hover:bg-slate-600 cursor-pointer">
+                            <input type="checkbox" id="showSubnetTraffic" class="text-blue-500" checked>
+                            <span class="text-sm text-slate-300">Subnet</span>
+                        </label>
                         <button id="clearAllFilters" class="px-3 py-2 text-sm text-slate-300 hover:text-slate-100 border border-slate-600 rounded hover:bg-slate-600">
                             Clear
                         </button>
@@ -309,6 +330,9 @@
                 this.quickProtocol = '';
                 this.quickTrafficMB = 0;
                 this.hideExternalIPs = false;
+                this.showVirtualTraffic = true;
+                this.showPhysicalTraffic = true;
+                this.showSubnetTraffic = true;
                 
                 this.initializeApp();
             }
@@ -373,6 +397,21 @@
 
                 document.getElementById('hideExternalIPs').addEventListener('change', (e) => {
                     this.hideExternalIPs = e.target.checked;
+                    this.applyDynamicFilters();
+                });
+
+                document.getElementById('showVirtualTraffic').addEventListener('change', (e) => {
+                    this.showVirtualTraffic = e.target.checked;
+                    this.applyDynamicFilters();
+                });
+
+                document.getElementById('showPhysicalTraffic').addEventListener('change', (e) => {
+                    this.showPhysicalTraffic = e.target.checked;
+                    this.applyDynamicFilters();
+                });
+
+                document.getElementById('showSubnetTraffic').addEventListener('change', (e) => {
+                    this.showSubnetTraffic = e.target.checked;
                     this.applyDynamicFilters();
                 });
 
@@ -753,6 +792,11 @@
                 if (!this.networkData?.flows) return;
                 
                 let filtered = this.networkData.flows.filter(flow => {
+                    // Flow type filter
+                    if (!this.showVirtualTraffic && flow.flowType === 'virtual') return false;
+                    if (!this.showPhysicalTraffic && flow.flowType === 'physical') return false;
+                    if (!this.showSubnetTraffic && flow.flowType === 'subnet') return false;
+                    
                     // Quick protocol filter
                     if (this.quickProtocol && flow.protocol !== this.quickProtocol) return false;
                     
@@ -882,10 +926,16 @@
                 document.getElementById('quickFilterProtocol').value = '';
                 document.getElementById('quickFilterTraffic').value = '0';
                 document.getElementById('hideExternalIPs').checked = false;
+                document.getElementById('showVirtualTraffic').checked = true;
+                document.getElementById('showPhysicalTraffic').checked = true;
+                document.getElementById('showSubnetTraffic').checked = true;
                 this.searchQuery = '';
                 this.quickProtocol = '';
                 this.quickTrafficMB = 0;
                 this.hideExternalIPs = false;
+                this.showVirtualTraffic = true;
+                this.showPhysicalTraffic = true;
+                this.showSubnetTraffic = true;
                 this.focusedDevice = null;
                 this.applyDynamicFilters();
             }
@@ -903,6 +953,9 @@
                 if (this.quickProtocol) filters.push(`Protocol: ${this.quickProtocol}`);
                 if (this.quickTrafficMB > 0) filters.push(`Traffic: ${this.quickTrafficMB}+ MB`);
                 if (this.hideExternalIPs) filters.push('Internal traffic only');
+                if (!this.showVirtualTraffic) filters.push('Virtual traffic hidden');
+                if (!this.showPhysicalTraffic) filters.push('Physical traffic hidden');
+                if (!this.showSubnetTraffic) filters.push('Subnet traffic hidden');
                 if (this.focusedDevice) filters.push(`Focused: ${this.focusedDevice.name || this.focusedDevice.hostname}`);
                 if (this.searchQuery) filters.push(`Search: ${this.searchQuery}`);
                 
@@ -1031,6 +1084,7 @@
                             linkData.flowCount += flow.flowCount || 1;
                             linkData.flows.push(flow);
                             linkData.protocols.add(flow.protocol);
+                            linkData.flowTypes.add(flow.flowType);
                         } else {
                             linkMap.set(linkKey, {
                                 source: source,
@@ -1038,7 +1092,8 @@
                                 totalBytes: flow.totalBytes || 0,
                                 flowCount: flow.flowCount || 1,
                                 flows: [flow],
-                                protocols: new Set([flow.protocol])
+                                protocols: new Set([flow.protocol]),
+                                flowTypes: new Set([flow.flowType])
                             });
                         }
                     }
@@ -1059,9 +1114,13 @@
                         if (d.protocols.has('TCP') && d.protocols.has('UDP')) return "#8b5cf6";
                         if (d.protocols.has('TCP')) return "#3b82f6";
                         if (d.protocols.has('UDP')) return "#10b981";
-                        
-
                         return "#6b7280";
+                    })
+                    .attr("stroke-dasharray", d => {
+                        // Apply dash pattern based on flow type
+                        if (d.flowTypes.has('subnet')) return "5,5";
+                        if (d.flowTypes.has('virtual')) return "2,2";
+                        return "none"; // Physical traffic - solid line
                     })
                     .attr("stroke-width", d => {
                         const maxBytesInView = Math.max(...links.map(l => l.totalBytes || 1));
@@ -1102,6 +1161,159 @@
                 
                 // Add simple circles for external nodes (same as in topology view)
                 this.renderExternalNodes(node.filter(d => d.type === 'external'));
+            }
+
+
+
+            detectClusters(nodes, nodeConnections, links) {
+                // Simple community detection based on shared connections
+                const clusters = [];
+                const visited = new Set();
+                
+                // Start with highest degree nodes as cluster seeds
+                const sortedNodes = nodes
+                    .filter(n => n.type === 'device') // Only cluster devices, not external IPs
+                    .sort((a, b) => (nodeConnections.get(b.id)?.size || 0) - (nodeConnections.get(a.id)?.size || 0));
+                
+                for (let seed of sortedNodes) {
+                    if (visited.has(seed.id)) continue;
+                    
+                    const cluster = [];
+                    const queue = [seed.id];
+                    const clusterNodes = new Set();
+                    
+                    while (queue.length > 0 && cluster.length < 8) { // Limit cluster size
+                        const nodeId = queue.shift();
+                        if (visited.has(nodeId) || clusterNodes.has(nodeId)) continue;
+                        
+                        cluster.push(nodeId);
+                        clusterNodes.add(nodeId);
+                        visited.add(nodeId);
+                        
+                        // Add strongly connected neighbors
+                        const connections = nodeConnections.get(nodeId) || new Set();
+                        for (let neighbor of connections) {
+                            if (!visited.has(neighbor) && !clusterNodes.has(neighbor)) {
+                                // Check if this neighbor has many connections to current cluster
+                                const neighborConnections = nodeConnections.get(neighbor) || new Set();
+                                let sharedConnections = 0;
+                                for (let clusterId of clusterNodes) {
+                                    if (neighborConnections.has(clusterId)) sharedConnections++;
+                                }
+                                
+                                // Add if highly connected to this cluster
+                                if (sharedConnections >= Math.max(1, clusterNodes.size * 0.3)) {
+                                    queue.push(neighbor);
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (cluster.length > 0) {
+                        clusters.push(cluster);
+                    }
+                }
+                
+                // Handle remaining unvisited nodes
+                const unvisited = nodes.filter(n => n.type === 'device' && !visited.has(n.id));
+                if (unvisited.length > 0) {
+                    clusters.push(unvisited.map(n => n.id));
+                }
+                
+                console.log(`Detected ${clusters.length} clusters:`, clusters.map(c => c.length));
+                return clusters;
+            }
+
+            calculateClusterPositions(numClusters, width, height) {
+                const positions = [];
+                const margin = 200; // Increased margin for better spacing
+                const centerX = width / 2;
+                const centerY = height / 2;
+                
+                if (numClusters === 1) {
+                    positions.push({ x: centerX, y: centerY });
+                } else if (numClusters === 2) {
+                    positions.push({ x: width * 0.25, y: centerY }); // Further apart
+                    positions.push({ x: width * 0.75, y: centerY });
+                } else if (numClusters === 3) {
+                    positions.push({ x: centerX, y: height * 0.2 }); // More spread out
+                    positions.push({ x: width * 0.2, y: height * 0.8 });
+                    positions.push({ x: width * 0.8, y: height * 0.8 });
+                } else {
+                    // Arrange in circle for 4+ clusters with larger radius
+                    const radius = Math.min(width, height) * 0.35; // Larger radius for better spacing
+                    for (let i = 0; i < numClusters; i++) {
+                        const angle = (i / numClusters) * 2 * Math.PI;
+                        positions.push({
+                            x: centerX + Math.cos(angle) * radius,
+                            y: centerY + Math.sin(angle) * radius
+                        });
+                    }
+                }
+                
+                return positions;
+            }
+
+            recalculateClusters(nodes, links, width, height) {
+                // Recalculate node connections based on current link positions
+                const nodeConnections = new Map();
+                const nodeDegrees = new Map();
+                
+                links.forEach(link => {
+                    const sourceId = link.source.id || link.source;
+                    const targetId = link.target.id || link.target;
+                    
+                    nodeDegrees.set(sourceId, (nodeDegrees.get(sourceId) || 0) + 1);
+                    nodeDegrees.set(targetId, (nodeDegrees.get(targetId) || 0) + 1);
+                    
+                    if (!nodeConnections.has(sourceId)) nodeConnections.set(sourceId, new Set());
+                    if (!nodeConnections.has(targetId)) nodeConnections.set(targetId, new Set());
+                    nodeConnections.get(sourceId).add(targetId);
+                    nodeConnections.get(targetId).add(sourceId);
+                });
+                
+                // Detect new clusters
+                const newClusters = this.detectClusters(nodes, nodeConnections, links);
+                const newClusterPositions = this.calculateClusterPositions(newClusters.length, width, height);
+                
+                // Update node cluster assignments and degrees
+                nodes.forEach(node => {
+                    node.degree = nodeDegrees.get(node.id) || 0;
+                    
+                    // Find new cluster assignment
+                    let oldCluster = node.cluster;
+                    for (let i = 0; i < newClusters.length; i++) {
+                        if (newClusters[i].includes(node.id)) {
+                            node.cluster = i;
+                            node.clusterCenter = newClusterPositions[i];
+                            break;
+                        }
+                    }
+                    
+                    // Default cluster for unassigned nodes
+                    if (node.cluster === undefined) {
+                        node.cluster = 0;
+                        node.clusterCenter = newClusterPositions[0];
+                    }
+                });
+                
+                // Update simulation forces with new cluster info
+                if (this.simulation) {
+                    this.simulation.force("link").distance(d => {
+                        if (d.source.cluster === d.target.cluster) {
+                            return 180; // Much longer intra-cluster links
+                        }
+                        return 400; // Very long inter-cluster links
+                    }).strength(d => {
+                        if (d.source.cluster === d.target.cluster) {
+                            return 0.4;
+                        }
+                        return 0.15;
+                    });
+                    
+                    // Boost alpha slightly to respond to changes
+                    this.simulation.alpha(Math.min(0.3, this.simulation.alpha() + 0.05));
+                }
             }
 
             renderVisualization() {
@@ -1153,14 +1365,14 @@
                 // Use all devices with flows (no artificial limit)
                 const devices = devicesWithFlows;
                 
-                devices.forEach(device => {
+                devices.forEach((device, i) => {
                     const node = {
                         id: device.id,
                         name: device.name || device.hostname,
                         type: 'device',
                         device: device,
-                        x: Math.random() * width,
-                        y: Math.random() * height
+                        x: width / 2 + (Math.random() - 0.5) * 200, // Will be repositioned by cluster
+                        y: height / 2 + (Math.random() - 0.5) * 200
                     };
                     nodes.push(node);
                     nodeMap.set(device.id, node);
@@ -1183,15 +1395,21 @@
                     }
                 });
                 
-                // Limit external IPs
-                const limitedExternalIPs = Array.from(externalIPs).slice(0, 20);
-                limitedExternalIPs.forEach(ip => {
+                // Limit external IPs to prevent overcrowding
+                const limitedExternalIPs = Array.from(externalIPs).slice(0, 15);
+                limitedExternalIPs.forEach((ip, i) => {
+                    // Place external IPs in outer ring for circular layout
+                    const angle = (i / limitedExternalIPs.length) * 2 * Math.PI;
+                    const radius = Math.min(width, height) * 0.45; // Further out than devices
+                    const centerX = width / 2;
+                    const centerY = height / 2;
+                    
                     const node = {
                         id: ip,
                         name: ip,
                         type: 'external',
-                        x: Math.random() * width,
-                        y: Math.random() * height
+                        x: centerX + Math.cos(angle) * radius + (Math.random() - 0.5) * 80,
+                        y: centerY + Math.sin(angle) * radius + (Math.random() - 0.5) * 80
                     };
                     nodes.push(node);
                     nodeMap.set(ip, node);
@@ -1215,6 +1433,7 @@
                             linkData.flows.push(flow);
                             // FIXED: Add protocol to existing Set
                             linkData.protocols.add(flow.protocol);
+                            linkData.flowTypes.add(flow.flowType);
                         } else {
                             linkMap.set(linkKey, {
                                 source: source,
@@ -1222,25 +1441,113 @@
                                 totalBytes: flow.totalBytes || 0,
                                 flowCount: flow.flowCount || 1,
                                 flows: [flow],
-                                protocols: new Set([flow.protocol])
+                                protocols: new Set([flow.protocol]),
+                                flowTypes: new Set([flow.flowType])
                             });
                         }
                     }
                 });
 
                 const links = Array.from(linkMap.values())
-                    .sort((a, b) => b.totalBytes - a.totalBytes)
-                    .slice(0, 50);
+                    .sort((a, b) => b.totalBytes - a.totalBytes);
+                    // Show all links - no limiting
                 
-                // Create force simulation with very stable settings to prevent jiggling
+                // Calculate node degrees and detect clusters
+                const nodeDegrees = new Map();
+                const nodeConnections = new Map(); // Track which nodes each node connects to
+                
+                links.forEach(link => {
+                    const sourceId = link.source.id || link.source;
+                    const targetId = link.target.id || link.target;
+                    
+                    nodeDegrees.set(sourceId, (nodeDegrees.get(sourceId) || 0) + 1);
+                    nodeDegrees.set(targetId, (nodeDegrees.get(targetId) || 0) + 1);
+                    
+                    if (!nodeConnections.has(sourceId)) nodeConnections.set(sourceId, new Set());
+                    if (!nodeConnections.has(targetId)) nodeConnections.set(targetId, new Set());
+                    nodeConnections.get(sourceId).add(targetId);
+                    nodeConnections.get(targetId).add(sourceId);
+                });
+                
+                // Simple clustering: group nodes that share many connections
+                const clusters = this.detectClusters(nodes, nodeConnections, links);
+                
+                // Assign cluster positions in a circle around the viewport
+                const clusterPositions = this.calculateClusterPositions(clusters.length, width, height);
+                
+                // Add cluster and degree info to nodes, position them near cluster centers
+                nodes.forEach(node => {
+                    node.degree = nodeDegrees.get(node.id) || 0;
+                    // Find which cluster this node belongs to
+                    for (let i = 0; i < clusters.length; i++) {
+                        if (clusters[i].includes(node.id)) {
+                            node.cluster = i;
+                            node.clusterCenter = clusterPositions[i];
+                            // Start near cluster center
+                            if (node.type === 'device') {
+                                node.x = node.clusterCenter.x + (Math.random() - 0.5) * 150;
+                                node.y = node.clusterCenter.y + (Math.random() - 0.5) * 150;
+                            }
+                            break;
+                        }
+                    }
+                    // Default cluster for unassigned nodes
+                    if (node.cluster === undefined) {
+                        node.cluster = 0;
+                        node.clusterCenter = clusterPositions[0];
+                        if (node.type === 'device') {
+                            node.x = node.clusterCenter.x + (Math.random() - 0.5) * 150;
+                            node.y = node.clusterCenter.y + (Math.random() - 0.5) * 150;
+                        }
+                    }
+                });
+                
+                // Create cluster force that helps with organization and center gravity
+                function clusterForce(alpha) {
+                    for (let node of nodes) {
+                        if (node.clusterCenter && !node.fx && !node.fy) { // Don't apply to dragged nodes
+                            const dx = node.clusterCenter.x - node.x;
+                            const dy = node.clusterCenter.y - node.y;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            if (distance > 0) {
+                                // Balanced cluster force for organization without overwhelming
+                                const force = alpha * 0.08;
+                                node.vx += dx * force;
+                                node.vy += dy * force;
+                            }
+                        }
+                    }
+                }
+                
+                // Clustering-based force simulation with much better spacing and center gravity
                 this.simulation = d3.forceSimulation(nodes)
-                    .force("link", d3.forceLink(links).id(d => d.id).distance(150).strength(0.5))
-                    .force("charge", d3.forceManyBody().strength(-300))
-                    .force("center", d3.forceCenter(width / 2, height / 2))
-                    .force("collision", d3.forceCollide().radius(d => d.type === 'device' ? 70 : 25))
-                    .alpha(0.3)
-                    .alphaDecay(0.05)
-                    .velocityDecay(0.9);
+                    .force("link", d3.forceLink(links).id(d => d.id)
+                        .distance(d => {
+                            // Much longer links for automatic spreading
+                            if (d.source.cluster === d.target.cluster) {
+                                return 180; // Much longer intra-cluster links
+                            }
+                            return 400; // Very long inter-cluster links
+                        })
+                        .strength(d => {
+                            // Even weaker forces for natural spreading
+                            if (d.source.cluster === d.target.cluster) {
+                                return 0.4;
+                            }
+                            return 0.15;
+                        }))
+                    .force("charge", d3.forceManyBody().strength(d => {
+                        // Much stronger repulsion for automatic spreading
+                        return d.type === 'device' ? -600 : -300;
+                    }))
+                    .force("collision", d3.forceCollide()
+                        .radius(d => d.type === 'device' ? 110 : 55) // Even larger collision radius
+                        .strength(1.0))
+                    .force("center", d3.forceCenter(width / 2, height / 2).strength(0.08)) // Stronger center gravity
+                    .force("cluster", clusterForce)
+                    .alpha(0.5)
+                    .alphaDecay(0.005)
+                    .velocityDecay(0.5); // Even more fluid movement
                 
 
                 const link = svg.append("g")
@@ -1258,11 +1565,25 @@
                         return "#6b7280";
                     })
                     .attr("class", d => {
-
-                        if (d.protocols.has('TCP') && d.protocols.has('UDP')) return "flow-line mixed";
-                        if (d.protocols.has('TCP')) return "flow-line tcp";
-                        if (d.protocols.has('UDP')) return "flow-line udp";
-                        return "flow-line";
+                        let classes = ["flow-line"];
+                        
+                        // Add protocol classes
+                        if (d.protocols.has('TCP') && d.protocols.has('UDP')) classes.push("mixed");
+                        else if (d.protocols.has('TCP')) classes.push("tcp");
+                        else if (d.protocols.has('UDP')) classes.push("udp");
+                        
+                        // Add flow type classes
+                        if (d.flowTypes.has('subnet')) classes.push("subnet");
+                        else if (d.flowTypes.has('virtual')) classes.push("virtual");
+                        else if (d.flowTypes.has('physical')) classes.push("physical");
+                        
+                        return classes.join(" ");
+                    })
+                    .attr("stroke-dasharray", d => {
+                        // Apply dash pattern based on flow type
+                        if (d.flowTypes.has('subnet')) return "5,5";
+                        if (d.flowTypes.has('virtual')) return "2,2";
+                        return "none"; // Physical traffic - solid line
                     })
                     .attr("stroke-width", d => {
                         // Enhanced bandwidth-based thickness scaling
@@ -1304,24 +1625,76 @@
                 // Add clickable external nodes
                 this.renderExternalNodes(node.filter(d => d.type === 'external'));
                 
-                // Add click handlers for both devices and external IPs
-                node.on("click", (event, d) => {
-                    event.stopPropagation();
-                    if (d.device) {
-                        this.selectDevice(d.device);
-                        this.focusOnDevice(d.device);
-                    } else if (d.type === 'external') {
-                        // Filter by external IP
-                        this.setQuickFilter(`ip:${d.id}`);
-                    }
-                });
+                // Create drag behavior with gradual release
+                const drag = d3.drag()
+                    .on("start", (event, d) => {
+                        if (!event.active) this.simulation.alphaTarget(0.3).restart();
+                        d.fx = d.x;
+                        d.fy = d.y;
+                        // Clear any existing release timer
+                        if (d.releaseTimer) {
+                            clearTimeout(d.releaseTimer);
+                            d.releaseTimer = null;
+                        }
+                    })
+                    .on("drag", (event, d) => {
+                        d.fx = event.x;
+                        d.fy = event.y;
+                    })
+                    .on("end", (event, d) => {
+                        if (!event.active) this.simulation.alphaTarget(0.1);
+                        
+                        // Gradually release the node after 3 seconds
+                        d.releaseTimer = setTimeout(() => {
+                            d.fx = null;
+                            d.fy = null;
+                            // Give simulation a little boost to help it settle
+                            this.simulation.alpha(Math.min(0.3, this.simulation.alpha() + 0.1)).restart();
+                            d.releaseTimer = null;
+                        }, 3000); // 3 second delay before natural movement resumes
+                    });
+
+                // Add click, hover, and drag handlers for both devices and external IPs
+                node.call(drag)
+                    .on("click", (event, d) => {
+                        event.stopPropagation();
+                        if (d.device) {
+                            this.selectDevice(d.device);
+                            this.focusOnDevice(d.device);
+                        } else if (d.type === 'external') {
+                            // Filter by external IP
+                            this.setQuickFilter(`ip:${d.id}`);
+                        }
+                    })
+                    .on("mouseover", (event, d) => {
+                        this.showNodeTooltip(event, d);
+                    })
+                    .on("mouseout", () => {
+                        this.hideTooltip();
+                    })
+                    .on("dblclick", (event, d) => {
+                        // Double-click to immediately release from fixed position
+                        if (d.releaseTimer) {
+                            clearTimeout(d.releaseTimer);
+                            d.releaseTimer = null;
+                        }
+                        d.fx = null;
+                        d.fy = null;
+                        this.simulation.alpha(0.3).restart();
+                    });
                 
-                // Update positions on simulation tick (very throttled for stability)
-                let lastTick = 0;
+                // Continuous recalculation variables
+                let tickCount = 0;
+                const recalculateInterval = 100; // Recalculate every 100 ticks
+                
+                // Update positions on simulation tick with continuous recalculation
                 this.simulation.on("tick", () => {
-                    const now = Date.now();
-                    if (now - lastTick < 50) return; // Throttle to ~20fps for stability
-                    lastTick = now;
+                    tickCount++;
+                    
+                    // Periodically recalculate clusters and positions
+                    if (tickCount % recalculateInterval === 0) {
+                        this.recalculateClusters(nodes, links, width, height);
+                    }
                     
                     link
                         .attr("x1", d => d.source.x)
@@ -1331,22 +1704,15 @@
                     
                     node
                         .attr("transform", d => `translate(${d.x},${d.y})`);
-                        
-                    // Stop simulation when alpha gets low to prevent micro-movements
-                    if (this.simulation.alpha() < 0.05) {
-                        this.simulation.stop();
-                        this.isSimulationStable = true;
-                    }
                 });
                 
-                // Stop simulation quickly to prevent jiggling
+                // Keep simulation running continuously with lower alpha
                 setTimeout(() => {
-                    this.isSimulationStable = true;
-                    if (this.simulation && !this.isSimulationPaused) {
-                        this.simulation.alpha(0.01); // Very low alpha
-                        this.simulation.stop(); // Just stop it
+                    if (this.simulation) {
+                        this.simulation.alpha(0.1).restart(); // Keep it alive with low energy
+                        this.isSimulationStable = false; // Never fully stable
                     }
-                }, 2000); // Shorter timeout
+                }, 3000);
             }
 
             renderCircularLayout() {
@@ -1402,7 +1768,7 @@
                 // Create links
                 const links = this.createLinksFromFlows(nodeMap);
                 
-                this.renderNodesAndLinks(svg, nodes, links.slice(0, 50));
+                this.renderNodesAndLinks(svg, nodes, links.slice(0, 40));
             }
 
             renderGridLayout() {
@@ -1464,7 +1830,7 @@
                 // Create links
                 const links = this.createLinksFromFlows(nodeMap);
                 
-                this.renderNodesAndLinks(svg, nodes, links.slice(0, 50));
+                this.renderNodesAndLinks(svg, nodes, links.slice(0, 40));
             }
 
             showFlowTooltip(event, linkData) {
@@ -1486,8 +1852,65 @@
                     <div>Traffic: ${this.formatBytes(linkData.totalBytes)} (${trafficPercent}%)</div>
                     <div>Aggregated Flows: ${linkData.flowCount}</div>
                     <div>Protocols: ${Array.from(linkData.protocols).join(', ')}</div>
+                    <div>Flow Types: ${Array.from(linkData.flowTypes || new Set()).join(', ')}</div>
                     ${hasIPv6 ? '<div>🌐 Contains IPv6 traffic</div>' : '<div>📍 IPv4 only</div>'}
                 `;
+                
+                this.positionTooltip(tooltip, event);
+            }
+
+            showNodeTooltip(event, nodeData) {
+                const tooltip = this.getOrCreateTooltip();
+                
+                if (nodeData.type === 'device' && nodeData.device) {
+                    const device = nodeData.device;
+                    
+                    // Calculate flows and traffic for this device
+                    const deviceFlows = this.filteredFlows.filter(flow => 
+                        flow.sourceDevice?.id === device.id || flow.destinationDevice?.id === device.id
+                    );
+                    const totalTraffic = deviceFlows.reduce((sum, flow) => sum + (flow.totalBytes || 0), 0);
+                    
+                    // Count connections (degree)
+                    const connections = nodeData.degree || 0;
+                    
+                    // Determine device role
+                    let role = 'Machine';
+                    if (device.tags?.includes('exit-node')) role = 'Exit Node';
+                    else if (device.tags?.includes('subnet-router')) role = 'Subnet Router';
+                    else if (device.tags?.includes('ssh')) role = 'SSH Server';
+                    
+                    const isOnline = this.isDeviceOnline(device);
+                    
+                    tooltip.innerHTML = `
+                        <div class="font-semibold">${device.name || device.hostname || 'Unknown'}</div>
+                        <div>Role: ${role}</div>
+                        <div>Status: ${isOnline ? '🟢 Online' : '🔴 Offline'}</div>
+                        <div>OS: ${device.os || 'Unknown'}</div>
+                        <div>User: ${device.user || 'N/A'}</div>
+                        <div>Connections: ${connections}</div>
+                        <div>Traffic: ${this.formatBytes(totalTraffic)}</div>
+                        <div>Flows: ${deviceFlows.length}</div>
+                        <div>IPs: ${device.addresses?.length || 0}</div>
+                        ${device.tags?.length ? `<div>Tags: ${device.tags.slice(0, 3).join(', ')}${device.tags.length > 3 ? '...' : ''}</div>` : ''}
+                    `;
+                } else if (nodeData.type === 'external') {
+                    // External IP node
+                    const externalFlows = this.filteredFlows.filter(flow => 
+                        flow.sourceIP === nodeData.id || flow.destinationIP === nodeData.id
+                    );
+                    const totalTraffic = externalFlows.reduce((sum, flow) => sum + (flow.totalBytes || 0), 0);
+                    const connections = nodeData.degree || 0;
+                    
+                    tooltip.innerHTML = `
+                        <div class="font-semibold">External IP</div>
+                        <div>Address: ${nodeData.id}</div>
+                        <div>Type: ${this.isIPv6(nodeData.id) ? 'IPv6' : 'IPv4'}</div>
+                        <div>Connections: ${connections}</div>
+                        <div>Traffic: ${this.formatBytes(totalTraffic)}</div>
+                        <div>Flows: ${externalFlows.length}</div>
+                    `;
+                }
                 
                 this.positionTooltip(tooltip, event);
             }
@@ -1635,9 +2058,9 @@
                     );
                     const totalTraffic = deviceFlows.reduce((sum, flow) => sum + (flow.totalBytes || 0), 0);
                     
-                    // Box dimensions
-                    const boxWidth = 120;
-                    const boxHeight = 60;
+                    // Box dimensions - balanced for readability
+                    const boxWidth = 130;
+                    const boxHeight = 65;
                     
                     // Simple online status determination
                     const deviceOnline = window.tsflowApp.isDeviceOnline(d.device);
@@ -1729,9 +2152,9 @@
                 externalNodes.each(function(d) {
                     const nodeGroup = d3.select(this);
                     
-                    // Simple box for external IPs
-                    const boxWidth = 70;
-                    const boxHeight = 30;
+                    // External IP box for better visibility
+                    const boxWidth = 80;
+                    const boxHeight = 35;
                     
                     nodeGroup.append("rect")
                         .attr("x", -boxWidth/2)
