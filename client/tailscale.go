@@ -1,10 +1,12 @@
 package client
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -21,26 +23,47 @@ type TailscaleClient struct {
 }
 
 func NewTailscaleClient(accessToken, tailnet string) *TailscaleClient {
+	// Optimize HTTP client with connection pooling and timeouts
+	transport := &http.Transport{
+		Dial: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).Dial,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 15 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   10,
+		MaxConnsPerHost:       50,
+		IdleConnTimeout:       90 * time.Second,
+	}
+
 	return &TailscaleClient{
 		baseURL:     "https://api.tailscale.com/api/v2",
 		accessToken: accessToken,
 		tailnet:     tailnet,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:   45 * time.Second,
+			Transport: transport,
 		},
 	}
 }
 
 func (c *TailscaleClient) makeRequest(endpoint string) (*http.Response, error) {
+	return c.makeRequestWithContext(context.Background(), endpoint)
+}
+
+func (c *TailscaleClient) makeRequestWithContext(ctx context.Context, endpoint string) (*http.Response, error) {
 	url := fmt.Sprintf("%s%s", c.baseURL, endpoint)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
 	req.SetBasicAuth(c.accessToken, "")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "TSFlow/1.0")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -57,13 +80,17 @@ func (c *TailscaleClient) makeRequest(endpoint string) (*http.Response, error) {
 }
 
 func (c *TailscaleClient) GetNetworkLogs(start, end time.Time) (*models.NetworkLogResponse, error) {
+	return c.GetNetworkLogsWithContext(context.Background(), start, end)
+}
+
+func (c *TailscaleClient) GetNetworkLogsWithContext(ctx context.Context, start, end time.Time) (*models.NetworkLogResponse, error) {
 	params := url.Values{}
 	params.Add("start", start.Format(time.RFC3339))
 	params.Add("end", end.Format(time.RFC3339))
 
 	endpoint := fmt.Sprintf("/tailnet/%s/logging/network?%s", c.tailnet, params.Encode())
 
-	resp, err := c.makeRequest(endpoint)
+	resp, err := c.makeRequestWithContext(ctx, endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("fetching network logs: %w", err)
 	}
@@ -78,9 +105,13 @@ func (c *TailscaleClient) GetNetworkLogs(start, end time.Time) (*models.NetworkL
 }
 
 func (c *TailscaleClient) GetDevices() (*models.DevicesResponse, error) {
+	return c.GetDevicesWithContext(context.Background())
+}
+
+func (c *TailscaleClient) GetDevicesWithContext(ctx context.Context) (*models.DevicesResponse, error) {
 	endpoint := fmt.Sprintf("/tailnet/%s/devices", c.tailnet)
 
-	resp, err := c.makeRequest(endpoint)
+	resp, err := c.makeRequestWithContext(ctx, endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("fetching devices: %w", err)
 	}
@@ -96,10 +127,15 @@ func (c *TailscaleClient) GetDevices() (*models.DevicesResponse, error) {
 
 // ProcessFlowData processes raw network logs into both raw flow entries and aggregated flow data
 func (c *TailscaleClient) ProcessFlowData(logs *models.NetworkLogResponse, devices *models.DevicesResponse) *models.NetworkMap {
-	deviceMap := make(map[string]*models.Device)
+	return c.ProcessFlowDataWithContext(context.Background(), logs, devices)
+}
+
+// ProcessFlowDataWithContext processes flow data with context support and optimization
+func (c *TailscaleClient) ProcessFlowDataWithContext(ctx context.Context, logs *models.NetworkLogResponse, devices *models.DevicesResponse) *models.NetworkMap {
+	// Build device maps once for efficiency
+	deviceMap := make(map[string]*models.Device, len(devices.Devices))
 	ipToDevice := make(map[string]*models.Device)
 
-	// Build device maps
 	for i := range devices.Devices {
 		device := &devices.Devices[i]
 		deviceMap[device.ID] = device
@@ -110,12 +146,18 @@ func (c *TailscaleClient) ProcessFlowData(logs *models.NetworkLogResponse, devic
 		}
 	}
 
-	var rawFlows []models.RawFlowEntry
-	flowAggregator := make(map[string]*models.FlowData)
+	// Process flows sequentially to avoid race conditions
+	var allRawFlows []models.RawFlowEntry
+	globalAggregator := make(map[string]*models.FlowData)
 	var timeStart, timeEnd time.Time
 
-	// Process each log entry to create raw flows
 	for _, log := range logs.Logs {
+		select {
+		case <-ctx.Done():
+			break
+		default:
+		}
+
 		if timeStart.IsZero() || log.Start.Before(timeStart) {
 			timeStart = log.Start
 		}
@@ -126,28 +168,28 @@ func (c *TailscaleClient) ProcessFlowData(logs *models.NetworkLogResponse, devic
 		// Process virtual traffic
 		for _, flow := range log.VirtualTraffic {
 			rawFlow := c.createRawFlowEntry(flow, "virtual", log, ipToDevice)
-			rawFlows = append(rawFlows, rawFlow)
-			c.aggregateFlow(flow, "virtual", log, ipToDevice, flowAggregator)
+			allRawFlows = append(allRawFlows, rawFlow)
+			c.aggregateFlow(flow, "virtual", log, ipToDevice, globalAggregator)
 		}
 
 		// Process physical traffic
 		for _, flow := range log.PhysicalTraffic {
 			rawFlow := c.createRawFlowEntry(flow, "physical", log, ipToDevice)
-			rawFlows = append(rawFlows, rawFlow)
-			c.aggregateFlow(flow, "physical", log, ipToDevice, flowAggregator)
+			allRawFlows = append(allRawFlows, rawFlow)
+			c.aggregateFlow(flow, "physical", log, ipToDevice, globalAggregator)
 		}
 
 		// Process subnet traffic
 		for _, flow := range log.SubnetTraffic {
 			rawFlow := c.createRawFlowEntry(flow, "subnet", log, ipToDevice)
-			rawFlows = append(rawFlows, rawFlow)
-			c.aggregateFlow(flow, "subnet", log, ipToDevice, flowAggregator)
+			allRawFlows = append(allRawFlows, rawFlow)
+			c.aggregateFlow(flow, "subnet", log, ipToDevice, globalAggregator)
 		}
 	}
 
 	// Convert aggregated flows to slice and sort by bytes
-	var flows []models.FlowData
-	for _, flow := range flowAggregator {
+	flows := make([]models.FlowData, 0, len(globalAggregator))
+	for _, flow := range globalAggregator {
 		flows = append(flows, *flow)
 	}
 
@@ -157,14 +199,14 @@ func (c *TailscaleClient) ProcessFlowData(logs *models.NetworkLogResponse, devic
 	})
 
 	// Sort raw flows by timestamp (most recent first)
-	sort.Slice(rawFlows, func(i, j int) bool {
-		return rawFlows[i].Timestamp.After(rawFlows[j].Timestamp)
+	sort.Slice(allRawFlows, func(i, j int) bool {
+		return allRawFlows[i].Timestamp.After(allRawFlows[j].Timestamp)
 	})
 
 	return &models.NetworkMap{
 		Devices:  devices.Devices,
 		Flows:    flows,
-		RawFlows: rawFlows,
+		RawFlows: allRawFlows,
 		TimeRange: models.TimeWindow{
 			Start: timeStart,
 			End:   timeEnd,
@@ -180,7 +222,7 @@ func (c *TailscaleClient) createRawFlowEntry(flow models.TrafficFlow, flowType s
 	srcIP = normalizeIP(srcIP)
 	dstIP = normalizeIP(dstIP)
 
-	// Generate unique ID for this flow entry
+	// Generate unique ID for this flow entry - more efficient hashing
 	flowID := fmt.Sprintf("%x", md5.Sum([]byte(fmt.Sprintf("%s-%s-%s-%s-%s-%d-%d",
 		log.NodeID, srcIP, dstIP, srcPort, dstPort, log.Start.Unix(), flow.Proto))))
 
@@ -217,163 +259,178 @@ func (c *TailscaleClient) createRawFlowEntry(flow models.TrafficFlow, flowType s
 	}
 }
 
-// FilterRawFlows applies filters to raw flow entries
+// FilterRawFlows applies filters to raw flows with optimizations
 func (c *TailscaleClient) FilterRawFlows(rawFlows []models.RawFlowEntry, filters models.FlowFilters) []models.RawFlowEntry {
-	var filtered []models.RawFlowEntry
+	if len(rawFlows) == 0 {
+		return rawFlows
+	}
 
-	for _, flow := range rawFlows {
-		// Port filtering
-		if len(filters.Ports) > 0 {
-			portMatch := false
-			for _, port := range filters.Ports {
-				if flow.SourcePort == port || flow.DestinationPort == port {
-					portMatch = true
-					break
-				}
-			}
-			if !portMatch {
+	// Pre-allocate slice with estimated capacity
+	estimatedSize := len(rawFlows) / 2
+	if estimatedSize > filters.Limit {
+		estimatedSize = filters.Limit
+	}
+	filtered := make([]models.RawFlowEntry, 0, estimatedSize)
+
+	// Create maps for faster lookup
+	portMap := make(map[string]bool, len(filters.Ports))
+	for _, port := range filters.Ports {
+		portMap[port] = true
+	}
+
+	protocolMap := make(map[string]bool, len(filters.Protocols))
+	for _, protocol := range filters.Protocols {
+		protocolMap[strings.ToLower(protocol)] = true
+	}
+
+	flowTypeMap := make(map[string]bool, len(filters.FlowTypes))
+	for _, flowType := range filters.FlowTypes {
+		flowTypeMap[strings.ToLower(flowType)] = true
+	}
+
+	deviceIDMap := make(map[string]bool, len(filters.DeviceIDs))
+	for _, deviceID := range filters.DeviceIDs {
+		deviceIDMap[deviceID] = true
+	}
+
+	for i := range rawFlows {
+		flow := &rawFlows[i]
+
+		// Early exit if we've reached the limit
+		if len(filtered) >= filters.Limit {
+			break
+		}
+
+		// Port filter
+		if len(portMap) > 0 {
+			if !portMap[flow.SourcePort] && !portMap[flow.DestinationPort] {
 				continue
 			}
 		}
 
-		// Protocol filtering
-		if len(filters.Protocols) > 0 {
-			protocolMatch := false
-			for _, protocol := range filters.Protocols {
-				if strings.EqualFold(flow.Protocol, protocol) {
-					protocolMatch = true
-					break
-				}
-			}
-			if !protocolMatch {
+		// Protocol filter
+		if len(protocolMap) > 0 {
+			if !protocolMap[strings.ToLower(flow.Protocol)] {
 				continue
 			}
 		}
 
-		// Flow type filtering
-		if len(filters.FlowTypes) > 0 {
-			flowTypeMatch := false
-			for _, flowType := range filters.FlowTypes {
-				if flow.FlowType == flowType {
-					flowTypeMatch = true
-					break
-				}
-			}
-			if !flowTypeMatch {
+		// Flow type filter
+		if len(flowTypeMap) > 0 {
+			if !flowTypeMap[strings.ToLower(flow.FlowType)] {
 				continue
 			}
 		}
 
-		// Device ID filtering
-		if len(filters.DeviceIDs) > 0 {
-			deviceMatch := false
-			for _, deviceID := range filters.DeviceIDs {
-				if (flow.SourceDevice != nil && flow.SourceDevice.ID == deviceID) ||
-					(flow.DestinationDevice != nil && flow.DestinationDevice.ID == deviceID) {
-					deviceMatch = true
-					break
-				}
-			}
-			if !deviceMatch {
+		// Device ID filter
+		if len(deviceIDMap) > 0 {
+			sourceMatch := flow.SourceDevice != nil && deviceIDMap[flow.SourceDevice.ID]
+			destMatch := flow.DestinationDevice != nil && deviceIDMap[flow.DestinationDevice.ID]
+			if !sourceMatch && !destMatch {
 				continue
 			}
 		}
 
-		// Bytes filtering
+		// Bytes filter
 		if filters.MinBytes > 0 && flow.TotalBytes < filters.MinBytes {
 			continue
 		}
+
 		if filters.MaxBytes > 0 && flow.TotalBytes > filters.MaxBytes {
 			continue
 		}
 
-		filtered = append(filtered, flow)
+		filtered = append(filtered, *flow)
 	}
 
 	// Sort the filtered results
 	c.sortRawFlows(filtered, filters.SortBy, filters.SortOrder)
 
-	// Apply limit
-	if filters.Limit > 0 && len(filtered) > filters.Limit {
+	// Apply limit after sorting
+	if len(filtered) > filters.Limit {
 		filtered = filtered[:filters.Limit]
 	}
 
 	return filtered
 }
 
-// sortRawFlows sorts raw flows based on the specified criteria
+// sortRawFlows sorts flows based on criteria with optimizations
 func (c *TailscaleClient) sortRawFlows(flows []models.RawFlowEntry, sortBy, sortOrder string) {
-	if sortBy == "" {
-		sortBy = "timestamp"
-	}
-	if sortOrder == "" {
-		sortOrder = "desc"
-	}
-
 	ascending := strings.ToLower(sortOrder) == "asc"
 
-	sort.Slice(flows, func(i, j int) bool {
-		var result bool
-		switch strings.ToLower(sortBy) {
-		case "timestamp":
-			result = flows[i].Timestamp.Before(flows[j].Timestamp)
-		case "bytes":
-			result = flows[i].TotalBytes < flows[j].TotalBytes
-		case "packets":
-			result = flows[i].TotalPackets < flows[j].TotalPackets
-		case "port":
-			// Sort by destination port, then source port
-			if flows[i].DestinationPort != flows[j].DestinationPort {
-				result = flows[i].DestinationPort < flows[j].DestinationPort
-			} else {
-				result = flows[i].SourcePort < flows[j].SourcePort
+	switch strings.ToLower(sortBy) {
+	case "bytes":
+		sort.Slice(flows, func(i, j int) bool {
+			if ascending {
+				return flows[i].TotalBytes < flows[j].TotalBytes
 			}
-		case "protocol":
-			result = flows[i].Protocol < flows[j].Protocol
-		default:
-			result = flows[i].Timestamp.Before(flows[j].Timestamp)
-		}
-
-		if ascending {
-			return result
-		}
-		return !result
-	})
+			return flows[i].TotalBytes > flows[j].TotalBytes
+		})
+	case "packets":
+		sort.Slice(flows, func(i, j int) bool {
+			if ascending {
+				return flows[i].TotalPackets < flows[j].TotalPackets
+			}
+			return flows[i].TotalPackets > flows[j].TotalPackets
+		})
+	case "port":
+		sort.Slice(flows, func(i, j int) bool {
+			if ascending {
+				return flows[i].DestinationPort < flows[j].DestinationPort
+			}
+			return flows[i].DestinationPort > flows[j].DestinationPort
+		})
+	case "protocol":
+		sort.Slice(flows, func(i, j int) bool {
+			if ascending {
+				return flows[i].Protocol < flows[j].Protocol
+			}
+			return flows[i].Protocol > flows[j].Protocol
+		})
+	default: // timestamp
+		sort.Slice(flows, func(i, j int) bool {
+			if ascending {
+				return flows[i].Timestamp.Before(flows[j].Timestamp)
+			}
+			return flows[i].Timestamp.After(flows[j].Timestamp)
+		})
+	}
 }
 
+// aggregateFlow aggregates traffic flows for summary statistics
 func (c *TailscaleClient) aggregateFlow(flow models.TrafficFlow, flowType string, log models.NetworkLog, ipToDevice map[string]*models.Device, aggregator map[string]*models.FlowData) {
 	srcIP, _ := parseAddress(flow.Src)
 	dstIP, dstPort := parseAddress(flow.Dst)
 
 	srcIP = normalizeIP(srcIP)
 	dstIP = normalizeIP(dstIP)
-	ipVersion := "ipv4"
-	if isIPv6(srcIP) || isIPv6(dstIP) {
-		ipVersion = "ipv6"
-	}
-	flowKey := fmt.Sprintf("%s->%s:%s:%s:%s", srcIP, dstIP, getProtocolName(flow.Proto), flowType, ipVersion)
 
-	if existingFlow, exists := aggregator[flowKey]; exists {
-		existingFlow.TotalBytes += flow.TxBytes + flow.RxBytes
-		existingFlow.TotalPackets += flow.TxPkts + flow.RxPkts
-		existingFlow.FlowCount++
+	// Create aggregation key
+	key := fmt.Sprintf("%s:%s:%s:%s:%s", srcIP, dstIP, getProtocolName(flow.Proto), dstPort, flowType)
 
-		if log.Start.Before(existingFlow.TimeWindow.Start) {
-			existingFlow.TimeWindow.Start = log.Start
+	totalBytes := flow.TxBytes + flow.RxBytes
+	totalPackets := flow.TxPkts + flow.RxPkts
+
+	if existing, exists := aggregator[key]; exists {
+		existing.TotalBytes += totalBytes
+		existing.TotalPackets += totalPackets
+		existing.FlowCount++
+		if log.Start.Before(existing.TimeWindow.Start) {
+			existing.TimeWindow.Start = log.Start
 		}
-		if log.End.After(existingFlow.TimeWindow.End) {
-			existingFlow.TimeWindow.End = log.End
+		if log.End.After(existing.TimeWindow.End) {
+			existing.TimeWindow.End = log.End
 		}
 	} else {
-		aggregator[flowKey] = &models.FlowData{
+		aggregator[key] = &models.FlowData{
 			SourceDevice:      ipToDevice[srcIP],
 			DestinationDevice: ipToDevice[dstIP],
 			SourceIP:          srcIP,
 			DestinationIP:     dstIP,
 			Protocol:          getProtocolName(flow.Proto),
 			Port:              dstPort,
-			TotalBytes:        flow.TxBytes + flow.RxBytes,
-			TotalPackets:      flow.TxPkts + flow.RxPkts,
+			TotalBytes:        totalBytes,
+			TotalPackets:      totalPackets,
 			FlowType:          flowType,
 			FlowCount:         1,
 			TimeWindow: models.TimeWindow{

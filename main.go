@@ -1,136 +1,206 @@
 package main
 
 import (
-	"flag"
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 	"tsflow/handlers"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
-	var (
-		port        = flag.String("port", "8080", "Port to run the server on")
-		accessToken = flag.String("token", "", "Tailscale API access token")
-		tailnet     = flag.String("tailnet", "", "Tailscale tailnet name")
-		debug       = flag.Bool("debug", false, "Enable debug mode")
-	)
-	flag.Parse()
+	// Get configuration from environment variables
+	accessToken := os.Getenv("TAILSCALE_ACCESS_TOKEN")
+	if accessToken == "" {
+		log.Fatal("TAILSCALE_ACCESS_TOKEN environment variable is required")
+	}
 
-	if *accessToken == "" {
-		if envToken := os.Getenv("TAILSCALE_ACCESS_TOKEN"); envToken != "" {
-			*accessToken = envToken
-		} else {
-			log.Fatal("Tailscale access token is required. Use -token flag or set TAILSCALE_ACCESS_TOKEN environment variable.")
+	tailnet := os.Getenv("TAILSCALE_TAILNET")
+	if tailnet == "" {
+		log.Fatal("TAILSCALE_TAILNET environment variable is required")
+	}
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	// Set Gin mode
+	ginMode := os.Getenv("GIN_MODE")
+	if ginMode == "" {
+		ginMode = "release"
+	}
+	gin.SetMode(ginMode)
+
+	// Create router with optimized middleware
+	router := gin.New()
+
+	// Add recovery middleware with custom handler
+	router.Use(gin.CustomRecovery(func(c *gin.Context, recovered interface{}) {
+		if err, ok := recovered.(string); ok {
+			c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
 		}
-	}
+		c.AbortWithStatus(http.StatusInternalServerError)
+	}))
 
-	if *tailnet == "" {
-		if envTailnet := os.Getenv("TAILSCALE_TAILNET"); envTailnet != "" {
-			*tailnet = envTailnet
-		} else {
-			log.Fatal("Tailscale tailnet is required. Use -tailnet flag or set TAILSCALE_TAILNET environment variable.")
+	// Add structured logging middleware
+	router.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
+		return fmt.Sprintf("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",
+			param.ClientIP,
+			param.TimeStamp.Format(time.RFC822),
+			param.Method,
+			param.Path,
+			param.Request.Proto,
+			param.StatusCode,
+			param.Latency,
+			param.Request.UserAgent(),
+			param.ErrorMessage,
+		)
+	}))
+
+	// CORS middleware with optimized settings
+	corsConfig := cors.Config{
+		AllowOrigins:     []string{"*"}, // Configure appropriately for production
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization", "X-Requested-With"},
+		ExposeHeaders:    []string{"Content-Length", "X-Total-Count", "X-Filtered-Count"},
+		AllowCredentials: false,
+		MaxAge:           12 * time.Hour,
+	}
+	router.Use(cors.New(corsConfig))
+
+	// Add timeout middleware for API routes
+	router.Use(func(c *gin.Context) {
+		// Skip timeout for static files and health checks
+		if c.Request.URL.Path == "/health" || c.Request.URL.Path == "/" {
+			c.Next()
+			return
 		}
-	}
 
-	if !*debug {
-		gin.SetMode(gin.ReleaseMode)
-	}
+		// Set timeout for API routes
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+		defer cancel()
 
-	r := gin.Default()
-	apiHandler := handlers.NewAPIHandler(*accessToken, *tailnet)
-	setupRoutes(r, apiHandler)
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	})
 
-	fmt.Printf("🚀 TSFlow - Tailscale Network Flow Visualizer\n")
-	fmt.Printf("📊 Tailnet: %s\n", *tailnet)
-	fmt.Printf("🌐 Server running on http://localhost:%s\n", *port)
-	fmt.Printf("📖 API Documentation available at http://localhost:%s/api/docs\n", *port)
+	// Add compression middleware for better performance
+	router.Use(func(c *gin.Context) {
+		c.Header("Vary", "Accept-Encoding")
+		c.Next()
+	})
 
-	log.Fatal(r.Run(":" + *port))
-}
+	// Create API handler with optimizations
+	apiHandler := handlers.NewAPIHandler(accessToken, tailnet)
 
-func setupRoutes(r *gin.Engine, apiHandler *handlers.APIHandler) {
-	r.LoadHTMLGlob("templates/*")
-
-	r.GET("/", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "index.html", gin.H{
-			"title": "TSFlow - Tailscale Network Flow Visualizer",
+	// Health check endpoint
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "healthy",
+			"timestamp": time.Now().Format(time.RFC3339),
+			"version":   "1.0.0",
 		})
 	})
 
-	api := r.Group("/api")
+	// API routes
+	api := router.Group("/api")
 	{
-		api.GET("/health", apiHandler.HealthCheck)
 		api.GET("/network-map", apiHandler.GetNetworkMap)
-		api.GET("/devices", apiHandler.GetDevices)
-		api.GET("/devices/:deviceId/flows", apiHandler.GetDeviceFlows)
-		api.GET("/flows/raw", apiHandler.GetRawFlows)
+		api.GET("/raw-flows", apiHandler.GetRawFlows)
 
+		// API documentation endpoint
 		api.GET("/docs", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
-				"name":        "TSFlow API",
-				"version":     "1.0.0",
-				"description": "API for Tailscale Network Flow Visualization",
-				"endpoints": map[string]interface{}{
-					"GET /api/health": map[string]string{
-						"description": "Health check endpoint",
-						"returns":     "Service status",
+				"title":   "TSFlow API",
+				"version": "1.0.0",
+				"endpoints": gin.H{
+					"GET /api/network-map": gin.H{
+						"description": "Get network map with flows and devices",
+						"parameters": gin.H{
+							"start":     "Start time (RFC3339 format)",
+							"end":       "End time (RFC3339 format)",
+							"ports":     "Comma-separated list of ports to filter",
+							"protocols": "Comma-separated list of protocols to filter",
+							"flowTypes": "Comma-separated list of flow types to filter",
+							"deviceIds": "Comma-separated list of device IDs to filter",
+							"minBytes":  "Minimum bytes threshold",
+							"maxBytes":  "Maximum bytes threshold",
+							"sortBy":    "Sort field (timestamp, bytes, packets, port)",
+							"sortOrder": "Sort order (asc, desc)",
+							"limit":     "Maximum number of raw flows to return (max 1000)",
+						},
 					},
-					"GET /api/network-map": map[string]string{
-						"description": "Get network map with devices, aggregated flows, and raw flows",
-						"parameters":  "start (ISO8601), end (ISO8601), ports (comma-separated), protocols (comma-separated), sortBy (timestamp|bytes|packets|port), sortOrder (asc|desc), limit (int)",
-						"returns":     "Network map data with filtered flows",
+					"GET /api/raw-flows": gin.H{
+						"description": "Get filtered raw flow logs",
+						"parameters": gin.H{
+							"start":     "Start time (RFC3339 format)",
+							"end":       "End time (RFC3339 format)",
+							"ports":     "Comma-separated list of ports to filter",
+							"protocols": "Comma-separated list of protocols to filter",
+							"flowTypes": "Comma-separated list of flow types to filter",
+							"deviceIds": "Comma-separated list of device IDs to filter",
+							"minBytes":  "Minimum bytes threshold",
+							"maxBytes":  "Maximum bytes threshold",
+							"sortBy":    "Sort field (timestamp, bytes, packets, port)",
+							"sortOrder": "Sort order (asc, desc)",
+							"limit":     "Maximum number of flows to return (max 1000)",
+						},
 					},
-					"GET /api/flows/raw": map[string]string{
-						"description": "Get raw flow logs with filtering and sorting",
-						"parameters":  "start (ISO8601), end (ISO8601), ports (comma-separated), protocols (comma-separated), flowTypes (comma-separated), deviceIds (comma-separated), minBytes (int), maxBytes (int), sortBy (timestamp|bytes|packets|port), sortOrder (asc|desc), limit (int)",
-						"returns":     "Filtered and sorted raw flow entries",
-					},
-					"GET /api/devices": map[string]string{
-						"description": "Get all devices in the tailnet",
-						"returns":     "List of devices",
-					},
-					"GET /api/devices/:deviceId/flows": map[string]string{
-						"description": "Get flows for a specific device (both aggregated and raw)",
-						"parameters":  "start (ISO8601), end (ISO8601), limit (int)",
-						"returns":     "Device flows data",
-					},
-				},
-				"example_usage": map[string]string{
-					"Get last hour of data":       "/api/network-map",
-					"Get specific time range":     "/api/network-map?start=2025-05-30T00:00:00.000Z&end=2025-05-31T10:00:00.000Z",
-					"Filter by ports":             "/api/flows/raw?ports=22,80,443&sortBy=timestamp&sortOrder=desc",
-					"Filter by protocol":          "/api/flows/raw?protocols=TCP&limit=100",
-					"Filter by multiple criteria": "/api/flows/raw?ports=22&protocols=TCP&minBytes=1024&sortBy=bytes&sortOrder=desc",
-					"Get device flows":            "/api/devices/nDhoMgNmB721CNTRL/flows?limit=50",
-				},
-				"filter_examples": map[string]string{
-					"Common ports":    "22 (SSH), 80 (HTTP), 443 (HTTPS), 53 (DNS), 3389 (RDP)",
-					"Protocols":       "TCP, UDP, ICMP, proto-0",
-					"Flow types":      "virtual, physical, subnet",
-					"Sort options":    "timestamp, bytes, packets, port, protocol",
-					"Sort directions": "asc (ascending), desc (descending)",
 				},
 			})
 		})
 	}
 
-	r.NoRoute(func(c *gin.Context) {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error":   "Not Found",
-			"message": "The requested endpoint does not exist",
-			"available_endpoints": []string{
-				"GET /",
-				"GET /api/health",
-				"GET /api/network-map",
-				"GET /api/flows/raw",
-				"GET /api/devices",
-				"GET /api/devices/:deviceId/flows",
-				"GET /api/docs",
-			},
-		})
-	})
+	// Serve static files (HTML, CSS, JS)
+	router.Static("/static", "./static")
+	router.StaticFile("/", "./templates/index.html")
+
+	// Create HTTP server with optimized settings
+	server := &http.Server{
+		Addr:           ":" + port,
+		Handler:        router,
+		ReadTimeout:    30 * time.Second,
+		WriteTimeout:   70 * time.Second, // Longer than request timeout to allow proper response
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 20, // 1 MB
+	}
+
+	// Print startup information
+	fmt.Println("🚀 TSFlow - Tailscale Network Flow Visualizer")
+	fmt.Printf("📊 Tailnet: %s\n", tailnet)
+	fmt.Printf("🌐 Server running on http://localhost:%s\n", port)
+	fmt.Printf("📖 API Documentation available at http://localhost:%s/api/docs\n", port)
+
+	// Start server in a goroutine
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("🛑 Shutting down server...")
+
+	// Create a deadline for shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Gracefully shutdown the server
+	if err := server.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("✅ Server exited gracefully")
 }

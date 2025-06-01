@@ -1,9 +1,13 @@
 package handlers
 
 import (
+	"context"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"tsflow/client"
 	"tsflow/models"
@@ -14,17 +18,78 @@ import (
 // APIHandler handles HTTP requests for the TSFlow API
 type APIHandler struct {
 	tailscaleClient *client.TailscaleClient
+	cache           *ResponseCache
 }
 
-// NewAPIHandler creates a new API handler
-func NewAPIHandler(accessToken, tailnet string) *APIHandler {
-	return &APIHandler{
-		tailscaleClient: client.NewTailscaleClient(accessToken, tailnet),
+// ResponseCache provides simple in-memory caching with TTL
+type ResponseCache struct {
+	data   sync.Map
+	expiry sync.Map
+	mu     sync.RWMutex
+}
+
+type CacheEntry struct {
+	Data      interface{}
+	ExpiresAt time.Time
+}
+
+func NewResponseCache() *ResponseCache {
+	cache := &ResponseCache{}
+	// Start cleanup goroutine
+	go cache.cleanup()
+	return cache
+}
+
+func (c *ResponseCache) Get(key string) (interface{}, bool) {
+	if entry, exists := c.data.Load(key); exists {
+		cacheEntry := entry.(CacheEntry)
+		if time.Now().Before(cacheEntry.ExpiresAt) {
+			return cacheEntry.Data, true
+		}
+		c.data.Delete(key)
+	}
+	return nil, false
+}
+
+func (c *ResponseCache) Set(key string, value interface{}, ttl time.Duration) {
+	entry := CacheEntry{
+		Data:      value,
+		ExpiresAt: time.Now().Add(ttl),
+	}
+	c.data.Store(key, entry)
+}
+
+func (c *ResponseCache) cleanup() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		now := time.Now()
+		c.data.Range(func(key, value interface{}) bool {
+			if entry, ok := value.(CacheEntry); ok {
+				if now.After(entry.ExpiresAt) {
+					c.data.Delete(key)
+				}
+			}
+			return true
+		})
 	}
 }
 
-// GetNetworkMap returns the network map for the specified time range
+// NewAPIHandler creates a new API handler with caching
+func NewAPIHandler(accessToken, tailnet string) *APIHandler {
+	return &APIHandler{
+		tailscaleClient: client.NewTailscaleClient(accessToken, tailnet),
+		cache:           NewResponseCache(),
+	}
+}
+
+// GetNetworkMap returns the network map for the specified time range with optimizations
 func (h *APIHandler) GetNetworkMap(c *gin.Context) {
+	// Create timeout context
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+	defer cancel()
+
 	// Parse query parameters
 	startParam := c.DefaultQuery("start", "")
 	endParam := c.DefaultQuery("end", "")
@@ -67,22 +132,76 @@ func (h *APIHandler) GetNetworkMap(c *gin.Context) {
 		return
 	}
 
-	// Fetch network logs with timeout context
-	logs, err := h.tailscaleClient.GetNetworkLogs(start, end)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch network logs: " + err.Error()})
+	// Check cache first
+	cacheKey := h.generateCacheKey("network-map", start, end, c.Request.URL.RawQuery)
+	if cached, found := h.cache.Get(cacheKey); found {
+		log.Printf("Cache hit for network-map request")
+		c.JSON(http.StatusOK, cached)
 		return
 	}
 
-	// Fetch devices
-	devices, err := h.tailscaleClient.GetDevices()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch devices: " + err.Error()})
+	// Set streaming headers for better UX during long requests
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no") // Disable nginx buffering
+
+	// Use channels for concurrent data fetching
+	type result struct {
+		logs    *models.NetworkLogResponse
+		devices *models.DevicesResponse
+		err     error
+	}
+
+	logsChan := make(chan result, 1)
+	devicesChan := make(chan result, 1)
+
+	// Fetch network logs concurrently
+	go func() {
+		logs, err := h.tailscaleClient.GetNetworkLogsWithContext(ctx, start, end)
+		logsChan <- result{logs: logs, err: err}
+	}()
+
+	// Fetch devices concurrently
+	go func() {
+		devices, err := h.tailscaleClient.GetDevicesWithContext(ctx)
+		devicesChan <- result{devices: devices, err: err}
+	}()
+
+	// Wait for both requests with timeout
+	var logs *models.NetworkLogResponse
+	var devices *models.DevicesResponse
+
+	select {
+	case logsResult := <-logsChan:
+		if logsResult.err != nil {
+			cancel()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch network logs: " + logsResult.err.Error()})
+			return
+		}
+		logs = logsResult.logs
+	case <-ctx.Done():
+		c.JSON(http.StatusRequestTimeout, gin.H{"error": "Request timeout while fetching network logs"})
 		return
 	}
 
-	// Process and return network map
-	networkMap := h.tailscaleClient.ProcessFlowData(logs, devices)
+	select {
+	case devicesResult := <-devicesChan:
+		if devicesResult.err != nil {
+			cancel()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch devices: " + devicesResult.err.Error()})
+			return
+		}
+		devices = devicesResult.devices
+	case <-ctx.Done():
+		c.JSON(http.StatusRequestTimeout, gin.H{"error": "Request timeout while fetching devices"})
+		return
+	}
+
+	// Process data with context timeout
+	processingCtx, processCancel := context.WithTimeout(ctx, 15*time.Second)
+	defer processCancel()
+
+	networkMap := h.tailscaleClient.ProcessFlowDataWithContext(processingCtx, logs, devices)
 
 	// Parse filter parameters for raw flows
 	filters := h.parseFlowFilters(c)
@@ -106,18 +225,31 @@ func (h *APIHandler) GetNetworkMap(c *gin.Context) {
 				"start": start.Format(time.RFC3339),
 				"end":   end.Format(time.RFC3339),
 			},
+			"cached": false,
 		},
 	}
+
+	// Cache the response for 30 seconds for small time ranges, 2 minutes for larger ones
+	cacheTTL := 30 * time.Second
+	if end.Sub(start) > 6*time.Hour {
+		cacheTTL = 2 * time.Minute
+	}
+	h.cache.Set(cacheKey, response, cacheTTL)
 
 	c.JSON(http.StatusOK, response)
 }
 
-// parseFlowFilters parses filter parameters from query string
+// generateCacheKey creates a consistent cache key
+func (h *APIHandler) generateCacheKey(endpoint string, start, end time.Time, queryParams string) string {
+	return fmt.Sprintf("%s-%d-%d-%s", endpoint, start.Unix(), end.Unix(), queryParams)
+}
+
+// parseFlowFilters parses filter parameters from query string with better defaults
 func (h *APIHandler) parseFlowFilters(c *gin.Context) models.FlowFilters {
 	filters := models.FlowFilters{
 		SortBy:    c.DefaultQuery("sortBy", "timestamp"),
 		SortOrder: c.DefaultQuery("sortOrder", "desc"),
-		Limit:     1000, // Default limit
+		Limit:     500, // Reduced default limit for better performance
 	}
 
 	// Parse ports filter
@@ -172,8 +304,8 @@ func (h *APIHandler) parseFlowFilters(c *gin.Context) models.FlowFilters {
 	// Parse limit
 	if limitParam := c.Query("limit"); limitParam != "" {
 		if limit, err := strconv.Atoi(limitParam); err == nil && limit > 0 {
-			if limit > 2000 { // Cap at 2000 for performance
-				limit = 2000
+			if limit > 1000 { // Cap at 1000 for performance
+				limit = 1000
 			}
 			filters.Limit = limit
 		}
@@ -182,8 +314,12 @@ func (h *APIHandler) parseFlowFilters(c *gin.Context) models.FlowFilters {
 	return filters
 }
 
-// GetRawFlows returns filtered raw flow logs
+// GetRawFlows returns filtered raw flow logs with optimizations
 func (h *APIHandler) GetRawFlows(c *gin.Context) {
+	// Create timeout context
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	defer cancel()
+
 	// Parse time range
 	startParam := c.DefaultQuery("start", "")
 	endParam := c.DefaultQuery("end", "")
@@ -209,37 +345,74 @@ func (h *APIHandler) GetRawFlows(c *gin.Context) {
 		}
 	}
 
-	// Limit to 24 hours max for raw flows
-	maxDuration := 24 * time.Hour
+	// Limit to 12 hours max for raw flows
+	maxDuration := 12 * time.Hour
 	if end.Sub(start) > maxDuration {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":          "Time range too large for raw flows. Maximum allowed is 24 hours.",
-			"maxRange":       "24 hours",
+			"error":          "Time range too large for raw flows. Maximum allowed is 12 hours.",
+			"maxRange":       "12 hours",
 			"requestedRange": end.Sub(start).String(),
 		})
 		return
 	}
 
-	// Fetch and process data
-	logs, err := h.tailscaleClient.GetNetworkLogs(start, end)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch network logs: " + err.Error()})
+	// Check cache first
+	cacheKey := h.generateCacheKey("raw-flows", start, end, c.Request.URL.RawQuery)
+	if cached, found := h.cache.Get(cacheKey); found {
+		log.Printf("Cache hit for raw-flows request")
+		c.JSON(http.StatusOK, cached)
 		return
 	}
 
-	devices, err := h.tailscaleClient.GetDevices()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch devices: " + err.Error()})
-		return
+	// Fetch and process data concurrently
+	logsChan := make(chan *models.NetworkLogResponse, 1)
+	devicesChan := make(chan *models.DevicesResponse, 1)
+	errChan := make(chan error, 2)
+
+	go func() {
+		logs, err := h.tailscaleClient.GetNetworkLogsWithContext(ctx, start, end)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		logsChan <- logs
+	}()
+
+	go func() {
+		devices, err := h.tailscaleClient.GetDevicesWithContext(ctx)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		devicesChan <- devices
+	}()
+
+	var logs *models.NetworkLogResponse
+	var devices *models.DevicesResponse
+
+	// Wait for both with timeout
+	for i := 0; i < 2; i++ {
+		select {
+		case err := <-errChan:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch data: " + err.Error()})
+			return
+		case logsData := <-logsChan:
+			logs = logsData
+		case devicesData := <-devicesChan:
+			devices = devicesData
+		case <-ctx.Done():
+			c.JSON(http.StatusRequestTimeout, gin.H{"error": "Request timeout"})
+			return
+		}
 	}
 
-	networkMap := h.tailscaleClient.ProcessFlowData(logs, devices)
+	networkMap := h.tailscaleClient.ProcessFlowDataWithContext(ctx, logs, devices)
 
 	// Parse and apply filters
 	filters := h.parseFlowFilters(c)
 	filteredRawFlows := h.tailscaleClient.FilterRawFlows(networkMap.RawFlows, filters)
 
-	c.JSON(http.StatusOK, gin.H{
+	response := gin.H{
 		"rawFlows": filteredRawFlows,
 		"metadata": gin.H{
 			"totalCount":     len(networkMap.RawFlows),
@@ -249,8 +422,14 @@ func (h *APIHandler) GetRawFlows(c *gin.Context) {
 				"start": start.Format(time.RFC3339),
 				"end":   end.Format(time.RFC3339),
 			},
+			"cached": false,
 		},
-	})
+	}
+
+	// Cache for 1 minute
+	h.cache.Set(cacheKey, response, 1*time.Minute)
+
+	c.JSON(http.StatusOK, response)
 }
 
 // GetDevices returns all devices in the tailnet

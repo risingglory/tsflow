@@ -461,8 +461,6 @@
                 this.simulation = null;
                 this.abortController = null;
                 this.isSimulationPaused = false;
-                this.maxNodes = 50;
-                this.maxFlows = 500;
                 this.currentViewMode = 'topology';
                 this.minTrafficMB = 0;
                 this.focusedDevice = null;
@@ -480,7 +478,6 @@
                 this.showIPv6Traffic = true;
                 this.flowLogCollapsed = false;
                 this.flowLogEntries = [];
-                this.maxFlowLogEntries = 5000;
                 this.flowLogFilters = {
                     protocol: '',
                     port: '',
@@ -743,16 +740,7 @@
                     const startTimeValue = document.getElementById('startTime').value;
                     const endTimeValue = document.getElementById('endTime').value;
                     
-                    // Validate time range
-                    if (startTimeValue && endTimeValue) {
-                        const start = new Date(startTimeValue);
-                        const end = new Date(endTimeValue);
-                        const diffHours = (end - start) / (1000 * 60 * 60);
-                        
-                        if (diffHours > 24) {
-                            this.showMessage('warning', `Large time range (${Math.round(diffHours)} hours) may take a while to load.`);
-                        }
-                    }
+
                     
                     let url = '/api/network-map';
                     if (startTimeValue && endTimeValue) {
@@ -791,7 +779,6 @@
                     } else if (error.name === 'TimeoutError') {
                         this.showMessage('error', 'Request timed out. Try a smaller time range.');
                     } else {
-                        console.error('Error loading Tailnet data:', error);
                         this.showMessage('error', 'Failed to load Tailnet data: ' + error.message);
                     }
                 } finally {
@@ -800,7 +787,7 @@
                 }
             }
 
-            async fetchWithTimeout(url, options = {}, timeout = 30000) {
+            async fetchWithTimeout(url, options = {}, timeout = 60000) {
                 return Promise.race([
                     fetch(url, options),
                     new Promise((_, reject) => 
@@ -916,9 +903,9 @@
                     
                     // Show tags with proper truncation and containment
                     const tagsHtml = device.tags && device.tags.length > 0 
-                        ? `<div class="flex flex-wrap gap-1 mt-1 max-w-full overflow-hidden">${device.tags.slice(0, 2).map(tag => 
+                        ? `<div class="flex flex-wrap gap-1 mt-1 max-w-full overflow-hidden">${device.tags.map(tag => 
                             `<span class="tag-badge px-1 py-0.5 rounded text-xs">${tag.length > 8 ? tag.substring(0, 6) + '..' : tag}</span>`
-                          ).join('')}${device.tags.length > 2 ? '<span class="text-xs text-slate-400">+' + (device.tags.length - 2) + '</span>' : ''}</div>`
+                          ).join('')}</div>`
                         : '';
 
                     deviceElement.innerHTML = `
@@ -1158,15 +1145,7 @@
                 // Sort by total bytes (descending) to prioritize high-volume flows
                 filtered.sort((a, b) => (b.totalBytes || 0) - (a.totalBytes || 0));
                 
-                // Limit flows for performance
-                if (filtered.length > this.maxFlows) {
-                    const originalCount = filtered.length;
-                    filtered = filtered.slice(0, this.maxFlows);
-                    
-                    this.showMessage('warning', `Showing top ${this.maxFlows} flows (${this.formatBytes(filtered[this.maxFlows-1]?.totalBytes || 0)} min) out of ${originalCount} filtered flows.`);
-                } else {
-                    this.clearMessage();
-                }
+                this.clearMessage();
                 
                 this.filteredFlows = filtered;
                 this.renderVisualization();
@@ -1368,26 +1347,23 @@
                     // If API says online, trust it
                     if (device.online) return true;
                     
-                    // If API says offline, but device was seen recently, consider it online
-                    if (device.lastSeen) {
-                        try {
-                            const lastSeenDate = new Date(device.lastSeen);
-                            const now = new Date();
-                            const diffMinutes = (now - lastSeenDate) / (1000 * 60);
-                            
-                            // Consider online if seen within last 5 minutes (more strict)
-                            if (diffMinutes < 5) {
-                                console.log(`Device ${device.name || device.hostname}: API says offline but lastSeen ${diffMinutes.toFixed(1)}min ago - considering online`);
-                                return true;
+                                                // If API says offline, but device was seen recently, consider it online
+                            if (device.lastSeen) {
+                                try {
+                                    const lastSeenDate = new Date(device.lastSeen);
+                                    const now = new Date();
+                                    const diffMinutes = (now - lastSeenDate) / (1000 * 60);
+                                    
+                                    // Consider online if seen within last 5 minutes (more strict)
+                                    if (diffMinutes < 5) {
+                                        return true;
+                                    }
+                                    
+                                    return false;
+                                } catch (error) {
+                                    return false;
+                                }
                             }
-                            
-                            console.log(`Device ${device.name || device.hostname}: offline (lastSeen ${diffMinutes.toFixed(1)}min ago)`);
-                            return false;
-                        } catch (error) {
-                            console.warn('Error parsing lastSeen date:', device.lastSeen, error);
-                            return false;
-                        }
-                    }
                     
                     // API says offline and no lastSeen data
                     return false;
@@ -1423,7 +1399,6 @@
                         // Consider online if seen within last 15 minutes
                         return diffMinutes < 15;
                     } catch (error) {
-                        console.warn('Error parsing lastSeen date:', device.lastSeen, error);
                         return false;
                     }
                 }
@@ -1609,7 +1584,7 @@
                     clusters.push(unvisited.map(n => n.id));
                 }
                 
-                console.log(`Detected ${clusters.length} clusters:`, clusters.map(c => c.length));
+
                 return clusters;
             }
 
@@ -1740,7 +1715,7 @@
                     });
                 });
                 
-                // Add external IP nodes (limited)
+                // Add external IP nodes (REMOVED LIMITATION)
                 const externalIPs = new Set();
                 this.filteredFlows.forEach(flow => {
                     if (!nodeMap.has(flow.sourceIP)) {
@@ -1751,12 +1726,14 @@
                     }
                 });
                 
-                // Limit external IPs to prevent overcrowding
-                const limitedExternalIPs = Array.from(externalIPs).slice(0, 15);
-                limitedExternalIPs.forEach((ip, i) => {
-                    // Place external IPs in outer ring for circular layout
-                    const angle = (i / limitedExternalIPs.length) * 2 * Math.PI;
-                    const radius = Math.min(width, height) * 0.45; // Further out than devices
+                // Show ALL external IPs that have flows
+                Array.from(externalIPs).forEach((ip, i) => {
+                    // Place external IPs in expanding circles for better distribution
+                    const ring = Math.floor(i / 12); // 12 IPs per ring
+                    const angleStep = (2 * Math.PI) / Math.min(12, externalIPs.size - (ring * 12));
+                    const angle = (i % 12) * angleStep;
+                    const baseRadius = Math.min(width, height) * 0.4;
+                    const radius = baseRadius + (ring * 60); // Expand rings outward
                     const centerX = width / 2;
                     const centerY = height / 2;
                     
@@ -1764,8 +1741,8 @@
                         id: ip,
                         name: ip,
                         type: 'external',
-                        x: centerX + Math.cos(angle) * radius + (Math.random() - 0.5) * 80,
-                        y: centerY + Math.sin(angle) * radius + (Math.random() - 0.5) * 80
+                        x: centerX + Math.cos(angle) * radius + (Math.random() - 0.5) * 40,
+                        y: centerY + Math.sin(angle) * radius + (Math.random() - 0.5) * 40
                     };
                     nodes.push(node);
                     nodeMap.set(ip, node);
@@ -1773,21 +1750,46 @@
                 
                 // Aggregate flows between same node pairs for cleaner visualization
                 const linkMap = new Map();
+                let missingSourceNodes = 0;
+                let missingTargetNodes = 0;
+                
                 this.filteredFlows.forEach(flow => {
-                    const source = nodeMap.get(flow.sourceIP) || nodeMap.get(flow.sourceDevice?.id);
-                    const target = nodeMap.get(flow.destinationIP) || nodeMap.get(flow.destinationDevice?.id);
+                    // Enhanced node mapping: try multiple approaches to find source and target
+                    let source = null;
+                    let target = null;
+                    
+                    // Try device ID first, then IP address
+                    if (flow.sourceDevice?.id) {
+                        source = nodeMap.get(flow.sourceDevice.id);
+                    }
+                    if (!source && flow.sourceIP) {
+                        source = nodeMap.get(flow.sourceIP);
+                    }
+                    
+                    if (flow.destinationDevice?.id) {
+                        target = nodeMap.get(flow.destinationDevice.id);
+                    }
+                    if (!target && flow.destinationIP) {
+                        target = nodeMap.get(flow.destinationIP);
+                    }
+                    
+                    // Track missing nodes
+                    if (!source) {
+                        missingSourceNodes++;
+                    }
+                    if (!target) {
+                        missingTargetNodes++;
+                    }
                     
                     if (source && target && source !== target) {
-                        const linkKey = `${source.id}->${target.id}`;
-                        const reverseKey = `${target.id}->${source.id}`;
+                        // Create a consistent link key for bidirectional aggregation
+                        const linkKey = source.id < target.id ? `${source.id}->${target.id}` : `${target.id}->${source.id}`;
                         
-                        // Use existing link or create new one
-                        let linkData = linkMap.get(linkKey) || linkMap.get(reverseKey);
+                        let linkData = linkMap.get(linkKey);
                         if (linkData) {
                             linkData.totalBytes += flow.totalBytes || 0;
                             linkData.flowCount += flow.flowCount || 1;
                             linkData.flows.push(flow);
-                            // FIXED: Add protocol to existing Set
                             linkData.protocols.add(flow.protocol);
                             linkData.flowTypes.add(flow.flowType);
                         } else {
@@ -1806,7 +1808,6 @@
 
                 const links = Array.from(linkMap.values())
                     .sort((a, b) => b.totalBytes - a.totalBytes);
-                    // Show all links - no limiting
                 
                 // Calculate node degrees and detect clusters
                 const nodeDegrees = new Map();
@@ -2089,7 +2090,6 @@
                 // Allow simulation to naturally settle
                 this.simulation.on("end", () => {
                     this.isSimulationStable = true;
-                    console.log("Simulation has settled");
                 });
             }
 
@@ -2146,7 +2146,8 @@
                 // Create links
                 const links = this.createLinksFromFlows(nodeMap);
                 
-                this.renderNodesAndLinks(svg, nodes, links.slice(0, 40));
+                // Show ALL links in circular layout
+                this.renderNodesAndLinks(svg, nodes, links);
             }
 
             renderGridLayout() {
@@ -2208,7 +2209,8 @@
                 // Create links
                 const links = this.createLinksFromFlows(nodeMap);
                 
-                this.renderNodesAndLinks(svg, nodes, links.slice(0, 40));
+                // Show ALL links in grid layout
+                this.renderNodesAndLinks(svg, nodes, links);
             }
 
             showFlowTooltip(event, linkData) {
@@ -2270,7 +2272,7 @@
                         <div>Traffic: ${this.formatBytes(totalTraffic)}</div>
                         <div>Flows: ${deviceFlows.length}</div>
                         <div>IPs: ${device.addresses?.length || 0}</div>
-                        ${device.tags?.length ? `<div>Tags: ${device.tags.slice(0, 3).join(', ')}${device.tags.length > 3 ? '...' : ''}</div>` : ''}
+                        ${device.tags?.length ? `<div>Tags: ${device.tags.join(', ')}</div>` : ''}
                     `;
                 } else if (nodeData.type === 'external') {
                     // External IP node
@@ -2513,10 +2515,9 @@
                     
                     // Tags (if any)
                     if (d.device.tags && d.device.tags.length > 0) {
-                        const tagText = d.device.tags.slice(0, 2).join(', ');
-                        const displayText = d.device.tags.length > 2 ? tagText + '...' : tagText;
+                        const tagText = d.device.tags.join(', ');
                         nodeGroup.append("text")
-                            .text(displayText)
+                            .text(tagText.length > 20 ? tagText.substring(0, 17) + '...' : tagText)
                             .attr("x", 0)
                             .attr("y", 25)
                             .attr("text-anchor", "middle")
@@ -2530,9 +2531,15 @@
                 externalNodes.each(function(d) {
                     const nodeGroup = d3.select(this);
                     
-                    // External IP box for better visibility
-                    const boxWidth = 80;
-                    const boxHeight = 35;
+                    // Calculate traffic for this external IP
+                    const externalFlows = window.tsflowApp.filteredFlows.filter(flow => 
+                        flow.sourceIP === d.id || flow.destinationIP === d.id
+                    );
+                    const totalTraffic = externalFlows.reduce((sum, flow) => sum + (flow.totalBytes || 0), 0);
+                    
+                    // External IP box - adjust height if we have traffic to show
+                    const boxWidth = 90;
+                    const boxHeight = totalTraffic > 0 ? 40 : 35;
                     
                     // Check if this external IP is focused
                     const isFocused = window.tsflowApp.focusedExternalIP === d.id;
@@ -2549,22 +2556,35 @@
                         .attr("stroke-width", isFocused ? 3 : 1.5);
                     
                     // External IP label (truncated)
-                    const ipText = d.name.length > 12 ? d.name.substring(0, 9) + '...' : d.name;
+                    const ipText = d.name.length > 14 ? d.name.substring(0, 11) + '...' : d.name;
+                    const yPosition = totalTraffic > 0 ? -4 : (isFocused ? 0 : 4);
                     nodeGroup.append("text")
                         .text(ipText)
                         .attr("x", 0)
-                        .attr("y", isFocused ? 0 : 4)
+                        .attr("y", yPosition)
                         .attr("text-anchor", "middle")
                         .attr("font-size", "9px")
                         .attr("font-weight", isFocused ? "600" : "500")
                         .attr("fill", "#fed7aa");
                     
+                    // Traffic info
+                    if (totalTraffic > 0) {
+                        nodeGroup.append("text")
+                            .text(window.tsflowApp.formatBytes(totalTraffic))
+                            .attr("x", 0)
+                            .attr("y", 10)
+                            .attr("text-anchor", "middle")
+                            .attr("font-size", "8px")
+                            .attr("font-weight", "500")
+                            .attr("fill", "#fbbf24");
+                    }
+                    
                     // Add focus indicator
                     if (isFocused) {
                         nodeGroup.append("text")
                             .text("🎯")
-                            .attr("x", 0)
-                            .attr("y", 12)
+                            .attr("x", boxWidth/2 - 8)
+                            .attr("y", -boxHeight/2 + 10)
                             .attr("text-anchor", "middle")
                             .attr("font-size", "8px");
                     }
@@ -2894,11 +2914,8 @@
                         
                         // Highlight the flow on the graph
                         if (entry.flow) {
-                            console.log('Highlighting flow:', entry.flow);
                             this.highlightFlow(entry.flow, row);
                             document.getElementById('clearFlowSelection').classList.remove('hidden');
-                        } else {
-                            console.log('No flow data found for entry:', entry);
                         }
                     });
                     
@@ -2917,51 +2934,50 @@
                 
                 let highlightFound = false;
                 
+
+                
                 // Find the corresponding link in the visualization
                 const links = this.svg.selectAll('.flow-line');
                 
                 links.each(function(d) {
-                    // Check if this link matches the clicked flow - EXACT matching for precision
-                    const matchesFlow = d.flows && d.flows.some(linkFlow => {
-                        // Must match protocol first
-                        if (linkFlow.protocol !== flow.protocol) return false;
-                        
-                        // Must match IPs and ports exactly (both directions)
-                        const exactMatch1 = (linkFlow.sourceIP === flow.sourceIP && 
-                                           linkFlow.destinationIP === flow.destinationIP &&
-                                           linkFlow.sourcePort === flow.sourcePort &&
-                                           linkFlow.destinationPort === flow.destinationPort);
-                        
-                        const exactMatch2 = (linkFlow.sourceIP === flow.destinationIP && 
-                                           linkFlow.destinationIP === flow.sourceIP &&
-                                           linkFlow.sourcePort === flow.destinationPort &&
-                                           linkFlow.destinationPort === flow.sourcePort);
-                        
-                        // For flows without ports, just match IPs and protocol
-                        const noPortMatch1 = (!linkFlow.sourcePort && !linkFlow.destinationPort && 
-                                             !flow.sourcePort && !flow.destinationPort &&
-                                             linkFlow.sourceIP === flow.sourceIP && 
-                                             linkFlow.destinationIP === flow.destinationIP);
-                        
-                        const noPortMatch2 = (!linkFlow.sourcePort && !linkFlow.destinationPort && 
-                                             !flow.sourcePort && !flow.destinationPort &&
-                                             linkFlow.sourceIP === flow.destinationIP && 
-                                             linkFlow.destinationIP === flow.sourceIP);
-                        
-                        // If available, also check timestamp for ultra-precise matching
-                        if (exactMatch1 || exactMatch2 || noPortMatch1 || noPortMatch2) {
-                            // If timestamps are available and close enough (within same second), prefer that
-                            if (linkFlow.timestamp && flow.timestamp) {
-                                const timeDiff = Math.abs(new Date(linkFlow.timestamp) - new Date(flow.timestamp));
-                                return timeDiff < 5000; // Within 5 seconds
-                            }
-                            return true;
-                        }
-                        
-                        return false;
-                    });
+                    // First, try to match against the link endpoints directly
+                    // since links represent connections between specific nodes
+                    let linkMatches = false;
                     
-                    if (matchesFlow) {
+                    // Check if this link connects the same IPs as our flow
+                    const sourceNodeMatches = flow.sourceIP && (
+                        d.source.id === flow.sourceIP || 
+                        (d.source.device && flow.sourceDevice && d.source.device.id === flow.sourceDevice.id)
+                    );
+                    
+                    const targetNodeMatches = flow.destinationIP && (
+                        d.target.id === flow.destinationIP || 
+                        (d.target.device && flow.destinationDevice && d.target.device.id === flow.destinationDevice.id)
+                    );
+                    
+                    // Check both directions (source->target and target->source)
+                    const direction1 = sourceNodeMatches && targetNodeMatches;
+                    
+                    const reverseSourceMatches = flow.destinationIP && (
+                        d.source.id === flow.destinationIP || 
+                        (d.source.device && flow.destinationDevice && d.source.device.id === flow.destinationDevice.id)
+                    );
+                    
+                    const reverseTargetMatches = flow.sourceIP && (
+                        d.target.id === flow.sourceIP || 
+                        (d.target.device && flow.sourceDevice && d.target.device.id === flow.sourceDevice.id)
+                    );
+                    
+                    const direction2 = reverseSourceMatches && reverseTargetMatches;
+                    
+                    // Check if the protocol also matches any of the aggregated flows
+                    const protocolMatches = d.flows && d.flows.some(linkFlow => 
+                        linkFlow.protocol === flow.protocol
+                    );
+                    
+                    linkMatches = (direction1 || direction2) && protocolMatches;
+                    
+                    if (linkMatches) {
                         highlightFound = true;
                         
                         // Highlight the link with bright color and thicker line
@@ -2986,15 +3002,14 @@
                     }
                 });
                 
-                // If no exact match found, try a more relaxed match (protocol + IPs only, ignore ports)
+                // If no match found by link endpoints, try to match by IPs in the aggregated flows
                 if (!highlightFound) {
-                    console.log('No exact match found, trying relaxed matching...');
                     links.each(function(d) {
-                        const relaxedMatch = d.flows && d.flows.some(linkFlow => {
-                            // Must still match protocol
+                        const ipMatch = d.flows && d.flows.some(linkFlow => {
+                            // Must match protocol
                             if (linkFlow.protocol !== flow.protocol) return false;
                             
-                            // Match IPs only (both directions)
+                            // Match IPs (both directions)
                             const ipMatch1 = (linkFlow.sourceIP === flow.sourceIP && 
                                             linkFlow.destinationIP === flow.destinationIP);
                             const ipMatch2 = (linkFlow.sourceIP === flow.destinationIP && 
@@ -3003,23 +3018,55 @@
                             return ipMatch1 || ipMatch2;
                         });
                         
-                        if (relaxedMatch) {
-                            console.log('Found relaxed match (protocol + IPs)');
-                            // Highlight with slightly different style for relaxed match
+                        if (ipMatch) {
+                            highlightFound = true;
+                            
+                            // Highlight with slightly different style
                             d3.select(this)
                                 .style('stroke-width', '8px')
                                 .style('opacity', '0.8')
-                                .style('stroke', '#8b5cf6') // Purple highlight for relaxed match
+                                .style('stroke', '#8b5cf6') // Purple highlight for IP match
                                 .classed('highlighted-flow', true);
-                                
+                        }
+                    });
+                }
+                
+                // If still no match, try device-only matching (most permissive)
+                if (!highlightFound && (flow.sourceDevice || flow.destinationDevice)) {
+                    links.each(function(d) {
+                        // Check if this link connects devices involved in the flow
+                        const hasSourceDevice = flow.sourceDevice && 
+                            (d.source.device?.id === flow.sourceDevice.id || d.target.device?.id === flow.sourceDevice.id);
+                        const hasDestDevice = flow.destinationDevice && 
+                            (d.source.device?.id === flow.destinationDevice.id || d.target.device?.id === flow.destinationDevice.id);
+                            
+                        if (hasSourceDevice || hasDestDevice) {
                             highlightFound = true;
+                            
+                            // Highlight with subtle style for device match
+                            d3.select(this)
+                                .style('stroke-width', '6px')
+                                .style('opacity', '0.6')
+                                .style('stroke', '#06b6d4') // Cyan highlight for device match
+                                .classed('highlighted-flow', true);
                         }
                     });
                 }
                 
                 // Show notification if no match found
                 if (!highlightFound) {
-                    console.log('No matching flow found in visualization for:', flow);
+                    const notification = document.createElement('div');
+                    notification.className = 'fixed top-20 right-4 bg-red-600 text-white px-4 py-2 rounded shadow-lg z-50';
+                    notification.innerHTML = `
+                        <div class="font-semibold">Flow Not Visible</div>
+                        <div class="text-sm">This flow may be filtered out or aggregated.</div>
+                    `;
+                    document.body.appendChild(notification);
+                    setTimeout(() => {
+                        if (document.body.contains(notification)) {
+                            document.body.removeChild(notification);
+                        }
+                    }, 3000);
                 }
             }
 
