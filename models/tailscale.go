@@ -26,6 +26,31 @@ type TrafficFlow struct {
 	RxBytes int    `json:"rxBytes"`
 }
 
+// RawFlowEntry represents an individual flow log entry before aggregation
+type RawFlowEntry struct {
+	ID                string    `json:"id"`
+	NodeID            string    `json:"nodeId"`
+	Timestamp         time.Time `json:"timestamp"`
+	StartTime         time.Time `json:"startTime"`
+	EndTime           time.Time `json:"endTime"`
+	SourceDevice      *Device   `json:"sourceDevice"`
+	DestinationDevice *Device   `json:"destinationDevice"`
+	SourceIP          string    `json:"sourceIP"`
+	DestinationIP     string    `json:"destinationIP"`
+	SourcePort        string    `json:"sourcePort"`
+	DestinationPort   string    `json:"destinationPort"`
+	Protocol          string    `json:"protocol"`
+	ProtocolNumber    int       `json:"protocolNumber"`
+	TxBytes           int       `json:"txBytes"`
+	RxBytes           int       `json:"rxBytes"`
+	TxPackets         int       `json:"txPkts"`
+	RxPackets         int       `json:"rxPkts"`
+	TotalBytes        int       `json:"totalBytes"`
+	TotalPackets      int       `json:"totalPackets"`
+	FlowType          string    `json:"flowType"`
+	Direction         string    `json:"direction"` // "inbound", "outbound", "bidirectional"
+}
+
 type DevicesResponse struct {
 	Devices []Device `json:"devices"`
 }
@@ -67,7 +92,21 @@ type TimeWindow struct {
 }
 
 type NetworkMap struct {
-	Devices   []Device   `json:"devices"`
-	Flows     []FlowData `json:"flows"`
-	TimeRange TimeWindow `json:"timeRange"`
+	Devices   []Device       `json:"devices"`
+	Flows     []FlowData     `json:"flows"`
+	RawFlows  []RawFlowEntry `json:"rawFlows"`
+	TimeRange TimeWindow     `json:"timeRange"`
+}
+
+// FlowFilters represents filtering options for flows
+type FlowFilters struct {
+	Ports     []string `json:"ports"`
+	Protocols []string `json:"protocols"`
+	FlowTypes []string `json:"flowTypes"`
+	DeviceIDs []string `json:"deviceIds"`
+	MinBytes  int      `json:"minBytes"`
+	MaxBytes  int      `json:"maxBytes"`
+	SortBy    string   `json:"sortBy"`    // "timestamp", "bytes", "packets", "port"
+	SortOrder string   `json:"sortOrder"` // "asc", "desc"
+	Limit     int      `json:"limit"`
 }

@@ -67,6 +67,7 @@ func setupRoutes(r *gin.Engine, apiHandler *handlers.APIHandler) {
 		api.GET("/network-map", apiHandler.GetNetworkMap)
 		api.GET("/devices", apiHandler.GetDevices)
 		api.GET("/devices/:deviceId/flows", apiHandler.GetDeviceFlows)
+		api.GET("/flows/raw", apiHandler.GetRawFlows)
 
 		api.GET("/docs", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
@@ -79,24 +80,39 @@ func setupRoutes(r *gin.Engine, apiHandler *handlers.APIHandler) {
 						"returns":     "Service status",
 					},
 					"GET /api/network-map": map[string]string{
-						"description": "Get network map with devices and flows",
-						"parameters":  "start (ISO8601), end (ISO8601)",
-						"returns":     "Network map data",
+						"description": "Get network map with devices, aggregated flows, and raw flows",
+						"parameters":  "start (ISO8601), end (ISO8601), ports (comma-separated), protocols (comma-separated), sortBy (timestamp|bytes|packets|port), sortOrder (asc|desc), limit (int)",
+						"returns":     "Network map data with filtered flows",
+					},
+					"GET /api/flows/raw": map[string]string{
+						"description": "Get raw flow logs with filtering and sorting",
+						"parameters":  "start (ISO8601), end (ISO8601), ports (comma-separated), protocols (comma-separated), flowTypes (comma-separated), deviceIds (comma-separated), minBytes (int), maxBytes (int), sortBy (timestamp|bytes|packets|port), sortOrder (asc|desc), limit (int)",
+						"returns":     "Filtered and sorted raw flow entries",
 					},
 					"GET /api/devices": map[string]string{
 						"description": "Get all devices in the tailnet",
 						"returns":     "List of devices",
 					},
 					"GET /api/devices/:deviceId/flows": map[string]string{
-						"description": "Get flows for a specific device",
+						"description": "Get flows for a specific device (both aggregated and raw)",
 						"parameters":  "start (ISO8601), end (ISO8601), limit (int)",
 						"returns":     "Device flows data",
 					},
 				},
 				"example_usage": map[string]string{
-					"Get last hour of data":   "/api/network-map",
-					"Get specific time range": "/api/network-map?start=2025-05-30T00:00:00.000Z&end=2025-05-31T10:00:00.000Z",
-					"Get device flows":        "/api/devices/nDhoMgNmB721CNTRL/flows?limit=50",
+					"Get last hour of data":       "/api/network-map",
+					"Get specific time range":     "/api/network-map?start=2025-05-30T00:00:00.000Z&end=2025-05-31T10:00:00.000Z",
+					"Filter by ports":             "/api/flows/raw?ports=22,80,443&sortBy=timestamp&sortOrder=desc",
+					"Filter by protocol":          "/api/flows/raw?protocols=TCP&limit=100",
+					"Filter by multiple criteria": "/api/flows/raw?ports=22&protocols=TCP&minBytes=1024&sortBy=bytes&sortOrder=desc",
+					"Get device flows":            "/api/devices/nDhoMgNmB721CNTRL/flows?limit=50",
+				},
+				"filter_examples": map[string]string{
+					"Common ports":    "22 (SSH), 80 (HTTP), 443 (HTTPS), 53 (DNS), 3389 (RDP)",
+					"Protocols":       "TCP, UDP, ICMP, proto-0",
+					"Flow types":      "virtual, physical, subnet",
+					"Sort options":    "timestamp, bytes, packets, port, protocol",
+					"Sort directions": "asc (ascending), desc (descending)",
 				},
 			})
 		})
@@ -110,6 +126,7 @@ func setupRoutes(r *gin.Engine, apiHandler *handlers.APIHandler) {
 				"GET /",
 				"GET /api/health",
 				"GET /api/network-map",
+				"GET /api/flows/raw",
 				"GET /api/devices",
 				"GET /api/devices/:deviceId/flows",
 				"GET /api/docs",
