@@ -161,10 +161,10 @@
                     <h3 class="section-header mb-2">Time Range</h3>
                     <div class="space-y-2">
                         <div class="grid grid-cols-2 gap-1">
+                            <button class="time-preset bg-slate-600 hover:bg-slate-500 text-slate-100 px-2 py-1 rounded text-xs transition-all border border-slate-500" data-range="15min">15min</button>
                             <button class="time-preset bg-slate-600 hover:bg-slate-500 text-slate-100 px-2 py-1 rounded text-xs transition-all border border-slate-500" data-range="1h">1h</button>
+                            <button class="time-preset bg-slate-600 hover:bg-slate-500 text-slate-100 px-2 py-1 rounded text-xs transition-all border border-slate-500" data-range="3h">3h</button>
                             <button class="time-preset bg-slate-600 hover:bg-slate-500 text-slate-100 px-2 py-1 rounded text-xs transition-all border border-slate-500" data-range="6h">6h</button>
-                            <button class="time-preset bg-slate-600 hover:bg-slate-500 text-slate-100 px-2 py-1 rounded text-xs transition-all border border-slate-500" data-range="24h">24h</button>
-                            <button class="time-preset bg-slate-600 hover:bg-slate-500 text-slate-100 px-2 py-1 rounded text-xs transition-all border border-slate-500" data-range="7d">7d</button>
                         </div>
                         <div class="space-y-1">
                             <input type="datetime-local" id="startTime" class="w-full px-2 py-1 text-xs rounded">
@@ -740,7 +740,31 @@
                     const startTimeValue = document.getElementById('startTime').value;
                     const endTimeValue = document.getElementById('endTime').value;
                     
-
+                    // Calculate adaptive timeout based on time range
+                    let timeoutMs = 60000; // Default 60 seconds
+                    if (startTimeValue && endTimeValue) {
+                        const start = new Date(startTimeValue);
+                        const end = new Date(endTimeValue);
+                        const diffHours = (end - start) / (1000 * 60 * 60);
+                        
+                        // Adaptive timeout based on time range
+                        if (diffHours <= 0.5) { // 30 minutes or less
+                            timeoutMs = 15000; // 15 seconds for <= 30 minutes
+                        } else if (diffHours <= 1) {
+                            timeoutMs = 30000; // 30 seconds for <= 1 hour
+                        } else if (diffHours <= 6) {
+                            timeoutMs = 60000; // 60 seconds for <= 6 hours
+                        } else {
+                            timeoutMs = 120000; // 2 minutes for > 6 hours
+                        }
+                        
+                        // Show loading message with estimated time
+                        if (diffHours > 3) {
+                            loadingMessage.textContent = `Fetching ${Math.round(diffHours)}h of data... (may take ${Math.round(timeoutMs/1000)}s)`;
+                        } else {
+                            loadingMessage.textContent = 'Fetching Tailnet data...';
+                        }
+                    }
                     
                     let url = '/api/network-map';
                     if (startTimeValue && endTimeValue) {
@@ -749,12 +773,9 @@
                         url += `?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
                     }
                     
-                    loadingMessage.textContent = 'Fetching Tailnet data...';
-                    
-
                     const response = await this.fetchWithTimeout(url, {
                         signal: this.abortController.signal
-                    }, 30000);
+                    }, timeoutMs);
                     
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
@@ -777,7 +798,20 @@
                     if (error.name === 'AbortError') {
                         this.showMessage('warning', 'Request was cancelled.');
                     } else if (error.name === 'TimeoutError') {
-                        this.showMessage('error', 'Request timed out. Try a smaller time range.');
+                        const startTimeValue = document.getElementById('startTime').value;
+                        const endTimeValue = document.getElementById('endTime').value;
+                        let helpText = 'Request timed out. Try a smaller time range.';
+                        
+                        if (startTimeValue && endTimeValue) {
+                            const diffHours = (new Date(endTimeValue) - new Date(startTimeValue)) / (1000 * 60 * 60);
+                            if (diffHours > 6) {
+                                helpText = `${Math.round(diffHours)}h is a large time range. Try limiting to 6h or less, or wait longer for processing.`;
+                            } else if (diffHours > 3) {
+                                helpText = `${Math.round(diffHours)}h time range timed out. Backend may be busy - try again or use a smaller range.`;
+                            }
+                        }
+                        
+                        this.showMessage('error', helpText);
                     } else {
                         this.showMessage('error', 'Failed to load Tailnet data: ' + error.message);
                     }
@@ -2401,17 +2435,17 @@
                 let start;
                 
                 switch(range) {
+                    case '15min':
+                        start = new Date(end.getTime() - 15 * 60 * 1000);
+                        break;
                     case '1h':
                         start = new Date(end.getTime() - 60 * 60 * 1000);
                         break;
+                    case '3h':
+                        start = new Date(end.getTime() - 3 * 60 * 60 * 1000);
+                        break;
                     case '6h':
                         start = new Date(end.getTime() - 6 * 60 * 60 * 1000);
-                        break;
-                    case '24h':
-                        start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
-                        break;
-                    case '7d':
-                        start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
                         break;
                 }
                 

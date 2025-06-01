@@ -76,7 +76,7 @@ func main() {
 	}
 	router.Use(cors.New(corsConfig))
 
-	// Add timeout middleware for API routes
+	// Add adaptive timeout middleware for API routes
 	router.Use(func(c *gin.Context) {
 		// Skip timeout for static files and health checks
 		if c.Request.URL.Path == "/health" || c.Request.URL.Path == "/" {
@@ -84,8 +84,35 @@ func main() {
 			return
 		}
 
-		// Set timeout for API routes
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+		// Calculate adaptive timeout based on time range
+		timeout := 60 * time.Second // Default timeout
+
+		if c.Request.URL.Path == "/api/network-map" || c.Request.URL.Path == "/api/raw-flows" {
+			startParam := c.Query("start")
+			endParam := c.Query("end")
+
+			if startParam != "" && endParam != "" {
+				if startTime, err := time.Parse(time.RFC3339, startParam); err == nil {
+					if endTime, err := time.Parse(time.RFC3339, endParam); err == nil {
+						diffHours := endTime.Sub(startTime).Hours()
+
+						// Adaptive timeout based on time range (matching frontend logic)
+						if diffHours <= 0.5 { // 30 minutes or less
+							timeout = 15 * time.Second
+						} else if diffHours <= 1 {
+							timeout = 30 * time.Second
+						} else if diffHours <= 6 {
+							timeout = 60 * time.Second
+						} else {
+							timeout = 2 * time.Minute
+						}
+					}
+				}
+			}
+		}
+
+		// Set adaptive timeout
+		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 		defer cancel()
 
 		c.Request = c.Request.WithContext(ctx)
@@ -168,7 +195,7 @@ func main() {
 		Addr:           ":" + port,
 		Handler:        router,
 		ReadTimeout:    30 * time.Second,
-		WriteTimeout:   70 * time.Second, // Longer than request timeout to allow proper response
+		WriteTimeout:   3 * time.Minute, // Support up to 2min + buffer for large time ranges
 		IdleTimeout:    120 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 1 MB
 	}

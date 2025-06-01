@@ -2,8 +2,6 @@
 
 A modern, interactive network flow visualizer for Tailscale networks, built with Go and D3.js. TSFlow provides a comprehensive web interface to visualize, analyze, and explore network traffic flows in your Tailscale network (tailnet).
 
-![TSFlow Interface](tsflow.gif)
-
 ## ✨ Features
 
 - 🌐 **Interactive Visualization** - Force-directed, circular, and grid network layouts
