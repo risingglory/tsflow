@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react'
 import * as d3 from 'd3'
-import { Search, RefreshCw, XCircle } from 'lucide-react'
+import { RefreshCw, XCircle, ChevronLeft, ChevronRight, Sidebar } from 'lucide-react'
 import useSWR from 'swr'
 import Layout from '@/components/Layout'
 import { fetcher } from '@/lib/api'
@@ -121,6 +121,11 @@ const NetworkView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   
+  // Sidebar visibility states
+  const [leftSidebarVisible, setLeftSidebarVisible] = useState(true)
+  const [rightSidebarVisible, setRightSidebarVisible] = useState(true)
+  const [fullScreenMode, setFullScreenMode] = useState(false)
+  
   // Custom time range states
   const [useCustomTimeRange, setUseCustomTimeRange] = useState(false)
   const [startDate, setStartDate] = useState('')
@@ -218,6 +223,30 @@ const NetworkView: React.FC = () => {
     setStartDate(formatForInput(fiveMinutesAgo))
     setEndDate(formatForInput(now))
     setLoading(false)
+  }, [])
+
+  // Keyboard shortcuts for full-screen mode
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'f' || e.key === 'F') {
+        setFullScreenMode(prev => {
+          const newValue = !prev
+          if (newValue) {
+            // Hide both sidebars for full-screen
+            setLeftSidebarVisible(false)
+            setRightSidebarVisible(false)
+          } else {
+            // Restore sidebars
+            setLeftSidebarVisible(true)
+            setRightSidebarVisible(true)
+          }
+          return newValue
+        })
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyPress)
+    return () => window.removeEventListener('keydown', handleKeyPress)
   }, [])
   
   // Process network logs to create nodes and links
@@ -941,25 +970,25 @@ const NetworkView: React.FC = () => {
       onClearSelection={resetAllFilters}
       showNetworkActions={true}
     >
-      <div className="flex h-full overflow-hidden">
+      <div className="flex h-full overflow-hidden relative">
+
         {/* Filters Sidebar */}
-        <div className="w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto flex-shrink-0 sticky top-0 h-screen">
-          <div className="p-6">
+        <div className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto flex-shrink-0 sticky top-0 h-screen transition-all duration-300 ${
+          leftSidebarVisible && !fullScreenMode ? 'w-80' : 'w-0'
+        }`}>
+                      <div className={`p-6 ${leftSidebarVisible && !fullScreenMode ? 'block' : 'hidden'}`}>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Filters</h3>
             
             {/* Search */}
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Search</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="Search devices or IPs..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
-                />
-              </div>
+              <input
+                type="text"
+                placeholder="Search devices or IPs..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
+              />
           </div>
           
             {/* Time Range */}
@@ -1247,15 +1276,71 @@ const NetworkView: React.FC = () => {
           </div>
 
         {/* Main Network View */}
-        <div className="flex-1">
+        <div className="flex-1 relative">
           <svg
             ref={svgRef}
             className="w-full h-full cursor-move bg-gray-50 dark:bg-gray-900"
           />
-              </div>
+          
+          {/* Left Control Buttons */}
+          <div className="absolute left-2 top-4 z-10 flex flex-col space-y-2">
+            {/* Left Sidebar Toggle */}
+            {!fullScreenMode && (
+              <button
+                onClick={() => setLeftSidebarVisible(!leftSidebarVisible)}
+                className="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                title={leftSidebarVisible ? "Hide filters" : "Show filters"}
+              >
+                {leftSidebarVisible ? <ChevronLeft className="w-4 h-4" /> : <Sidebar className="w-4 h-4" />}
+              </button>
+            )}
+          </div>
+
+          {/* Right Control Buttons */}
+          <div className="absolute right-2 top-4 z-10 flex flex-col space-y-2">
+            {/* Full-screen Toggle */}
+            <button
+              onClick={() => {
+                const newFullScreen = !fullScreenMode
+                setFullScreenMode(newFullScreen)
+                if (newFullScreen) {
+                  setLeftSidebarVisible(false)
+                  setRightSidebarVisible(false)
+                } else {
+                  setLeftSidebarVisible(true)
+                  setRightSidebarVisible(true)
+                }
+              }}
+              className="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              title={fullScreenMode ? "Exit full-screen (F)" : "Full-screen mode (F)"}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {fullScreenMode ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9V4.5M9 9H4.5M9 9L3.5 3.5M15 15v4.5M15 15h4.5M15 15l5.5 5.5M15 9h4.5M15 9V4.5M15 9l5.5-5.5M9 15H4.5M9 15v4.5M9 15l-5.5 5.5" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                )}
+              </svg>
+            </button>
+            
+            {/* Right Sidebar Toggle */}
+            {!fullScreenMode && (
+              <button
+                onClick={() => setRightSidebarVisible(!rightSidebarVisible)}
+                className="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                title={rightSidebarVisible ? "Hide details" : "Show details"}
+              >
+                {rightSidebarVisible ? <ChevronRight className="w-4 h-4" /> : <Sidebar className="w-4 h-4" />}
+              </button>
+            )}
+          </div>
+        </div>
             
         {/* Details Sidebar */}
-        <div className="w-80 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 overflow-y-auto flex-shrink-0 sticky top-0 h-screen">
+        <div className={`bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 overflow-y-auto flex-shrink-0 sticky top-0 h-screen transition-all duration-300 ${
+          rightSidebarVisible && !fullScreenMode ? 'w-80' : 'w-0'
+        }`}>
+          <div className={`${rightSidebarVisible && !fullScreenMode ? 'block' : 'hidden'}`}>
             {selectedNode && (
             <div className="p-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Device Details</h3>
@@ -1417,6 +1502,7 @@ const NetworkView: React.FC = () => {
               </div>
             </div>
           )}
+          </div>
         </div>
       </div>
     </Layout>
