@@ -40,8 +40,8 @@ lerna-debug.log*
 # Go workspace file
 go.work
 
-# Go module downloads
-backend/go.sum
+# Go module downloads cache
+# Note: go.sum should be committed
 
 # Editor directories and files
 .vscode/*
