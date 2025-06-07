@@ -145,7 +145,7 @@ const NetworkView: React.FC = () => {
   const { data: deviceData, error: deviceError, mutate: refetchDevices } = useSWR('/devices', fetcher, {
     errorRetryCount: 2,
     revalidateOnFocus: false,
-    refreshInterval: 60000 // Reduced from 30s to 60s
+    refreshInterval: 300000 // Refresh every 5 minutes
   })
 
   const devices = (Array.isArray(deviceData) && deviceData.length > 0 && 'name' in deviceData[0]) ? deviceData as TailscaleDevice[] : []
@@ -200,7 +200,7 @@ const NetworkView: React.FC = () => {
   const { data: networkLogsData, error: networkLogsError, mutate: refetchNetworkLogs } = useSWR(networkLogsApiUrl, fetcher, {
     errorRetryCount: 2,
     revalidateOnFocus: false,
-    refreshInterval: 120000 // Refresh every 2 minutes
+    refreshInterval: 300000 // Refresh every 5 minutes
   })
 
   const networkLogs = (Array.isArray(networkLogsData) && networkLogsData.length > 0 && 'logged' in networkLogsData[0]) ? networkLogsData : []
