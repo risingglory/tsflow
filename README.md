@@ -61,9 +61,9 @@ TSFlow uses a **Go backend + React frontend** architecture for optimal performan
 - **Tailscale API key** with appropriate permissions
 - **Docker** (recommended) or Go 1.21+ and Node.js 18+
 
-### Option 1: Using Docker (Recommended)
+### Using Docker Compose (Fastest)
 
-The fastest way to get started:
+The quickest way to get started:
 
 ```bash
 # Create environment file
@@ -79,15 +79,157 @@ docker-compose logs -f tsflow
 
 Then navigate to `http://localhost:8080` to start exploring your network!
 
-### Option 2: Development Setup
+## Deployment Options
 
-1. **Clone the repository**
+### 🐳 Docker Deployment
+
+#### Using Pre-built Images from GHCR
+
+Run directly using the pre-built container images from GitHub Container Registry:
+
+```bash
+# Simple docker run
+docker run -d \
+  --name tsflow \
+  -p 8080:8080 \
+  -e TAILSCALE_API_KEY=your-api-key \
+  -e TAILSCALE_TAILNET=your-tailnet \
+  -e ENVIRONMENT=production \
+  --restart unless-stopped \
+  ghcr.io/rajsinghtech/tsflow:latest
+```
+
+**Available image tags:**
+- `latest` - Latest stable release from main branch
+- `<version>` - Tagged releases (e.g., `v1.0.0`)
+- `<commit-sha>` - Specific commit builds
+
+#### Using Docker Compose (Recommended)
+
+Create a `docker-compose.yml` file:
+
+```yaml
+services:
+  tsflow:
+    image: ghcr.io/rajsinghtech/tsflow:latest
+    container_name: tsflow
+    ports:
+      - "8080:8080"
+    environment:
+      - TAILSCALE_API_KEY=${TAILSCALE_API_KEY}
+      - TAILSCALE_TAILNET=${TAILSCALE_TAILNET}
+      - PORT=8080
+      - ENVIRONMENT=production
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+```
+
+**Commands:**
+```bash
+# Start the application
+docker-compose up -d
+
+# View logs
+docker-compose logs -f tsflow
+
+# Update to latest version
+docker-compose pull && docker-compose up -d
+
+# Stop the application
+docker-compose down
+```
+
+### ☸️ Kubernetes Deployment
+
+Deploy TSFlow on Kubernetes using the provided manifests:
+
+#### Quick Deploy with Kustomize
+
+```bash
+# Clone the repository
+git clone https://github.com/rajsinghtech/tsflow.git
+cd tsflow/k8s
+
+# Set your Tailscale credentials
+export TAILSCALE_API_KEY="your-api-key-here"
+export TAILSCALE_TAILNET="your-tailnet-name"
+
+# Deploy using Kustomize
+kubectl apply -k .
+```
+
+#### Manual Deployment
+
+1. **Create the namespace:**
+   ```bash
+   kubectl create namespace tailscale
+   ```
+
+2. **Create the secret with your credentials:**
+   ```bash
+   kubectl create secret generic tsflow \
+     --namespace=tailscale \
+     --from-literal=TAILSCALE_API_KEY="your-api-key" \
+     --from-literal=TAILSCALE_TAILNET="your-tailnet"
+   ```
+
+3. **Deploy the application:**
+   ```bash
+   # Apply all manifests
+   kubectl apply -f k8s/deployment.yaml
+   kubectl apply -f k8s/service.yaml
+   
+   # Optional: Apply HTTPRoute for Gateway API
+   kubectl apply -f k8s/httproute.yaml
+   ```
+
+4. **Access the application:**
+   ```bash
+   # Port forward for local access
+   kubectl port-forward -n tailscale svc/tsflow 8080:80
+   
+   # Or use ingress/gateway based on your cluster setup
+   ```
+
+#### Kubernetes Manifests Overview
+
+The k8s directory contains:
+- `deployment.yaml` - Main application deployment
+- `service.yaml` - ClusterIP service
+- `secret.yaml` - Secret template for credentials
+- `httproute.yaml` - Gateway API route (optional)
+- `kustomization.yaml` - Kustomize configuration
+
+**Key features:**
+- Single replica with `Recreate` strategy
+- Health checks and resource limits
+- ConfigMap and Secret support
+- Gateway API compatibility
+
+### 🔧 Local Development Build
+
+For developers who want to build and run TSFlow locally:
+
+#### Prerequisites
+- **Go 1.21+** for backend development
+- **Node.js 18+** and **npm** for frontend development
+- **Git** for version control
+
+#### Development Setup
+
+1. **Clone the repository:**
    ```bash
    git clone https://github.com/rajsinghtech/tsflow.git
    cd tsflow
    ```
 
-2. **Configure environment**
+2. **Configure environment:**
    ```bash
    cp env.example .env
    ```
@@ -100,7 +242,7 @@ Then navigate to `http://localhost:8080` to start exploring your network!
    ENVIRONMENT=development
    ```
 
-3. **Build the frontend**
+3. **Build and run the frontend:**
    ```bash
    cd frontend
    npm install
@@ -108,85 +250,57 @@ Then navigate to `http://localhost:8080` to start exploring your network!
    cd ..
    ```
 
-4. **Run the backend**
+4. **Run the backend:**
    ```bash
    cd backend
    go mod download
    go run main.go
    ```
 
-5. **Open your browser**
-   Navigate to `http://localhost:8080` to start exploring your network!
+5. **Development workflow:**
+   ```bash
+   # For frontend development with hot reload
+   cd frontend
+   npm run dev  # Runs on port 5173 with proxy to backend
+   
+   # For backend development with auto-reload
+   cd backend
+   go install github.com/cosmtrek/air@latest
+   air  # Auto-reloads on Go file changes
+   ```
 
-## Docker Deployment
+#### Local Docker Build
 
-### Using Pre-built Images (Recommended)
-
-Pre-built container images are automatically built and published to GitHub Container Registry:
-
-```bash
-# Pull and run the latest image
-docker run -d \
-  -p 8080:8080 \
-  -e TAILSCALE_API_KEY=your-api-key \
-  -e TAILSCALE_TAILNET=your-tailnet \
-  --name tsflow \
-  ghcr.io/rajsinghtech/tsflow:latest
-```
-
-**Available tags:**
-- `latest` - Latest stable release from main branch
-- `<commit-sha>` - Specific commit builds
-- `<version>` - Tagged releases
-
-### Using Docker Compose (Recommended)
-
-The included `docker-compose.yml` file provides the easiest deployment:
-
-```yaml
-services:
-  tsflow:
-    build: .
-    ports:
-      - "8080:8080"
-    environment:
-      - TAILSCALE_API_KEY=${TAILSCALE_API_KEY}
-      - TAILSCALE_TAILNET=${TAILSCALE_TAILNET}
-      - PORT=8080
-      - ENVIRONMENT=production
-    env_file:
-      - .env
-    restart: unless-stopped
-```
-
-**Commands:**
-```bash
-# Start the application
-docker-compose up -d
-
-# View logs
-docker-compose logs -f tsflow
-
-# Rebuild and restart
-docker-compose up --build -d
-
-# Stop the application
-docker-compose down
-```
-
-### Building from Source
+Build the Docker image locally from source:
 
 ```bash
 # Build the image
-docker build -t tsflow .
+docker build -t tsflow:local .
 
 # Run the container
 docker run -d \
+  --name tsflow-local \
   -p 8080:8080 \
   -e TAILSCALE_API_KEY=your-api-key \
   -e TAILSCALE_TAILNET=your-tailnet \
-  --name tsflow \
-  tsflow
+  --restart unless-stopped \
+  tsflow:local
+```
+
+#### Development Testing
+
+```bash
+# Frontend testing
+cd frontend
+npm run test          # Run unit tests
+npm run lint          # Check code style
+npm run type-check    # TypeScript validation
+
+# Backend testing
+cd backend
+go test ./...         # Run tests
+go fmt ./...          # Format code
+go vet ./...          # Static analysis
 ```
 
 ## Configuration
