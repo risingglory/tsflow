@@ -1,4 +1,4 @@
-# Multi-stage build for React + Node.js API
+# Multi-stage build for React application
 FROM node:18-alpine AS base
 
 # Install dependencies only when needed
@@ -23,33 +23,30 @@ COPY . .
 # Build the React app
 RUN npm run build
 
-# Production image
+# Production image - serve static files
 FROM node:18-alpine AS runner
 WORKDIR /app
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Install serve globally for serving static files
+RUN npm install -g serve
+
+# Copy built application
+COPY --from=builder /app/dist ./dist
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy built application
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/server.js ./
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./
-
 # Change ownership to non-root user
 RUN chown -R nextjs:nodejs /app
 USER nextjs
 
-# Expose ports
-EXPOSE 3000 3001
+# Expose port
+EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3001/api/v2/tailnet/' + process.env.VITE_TAILSCALE_TAILNET + '/devices', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
 
-# Start both the API server and serve the built React app
-CMD ["dumb-init", "sh", "-c", "node server.js & npx serve -s dist -l 3000"]
+# Start serve with SPA support
+CMD ["serve", "-s", "dist", "-l", "3000"]

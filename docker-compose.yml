@@ -4,12 +4,11 @@ services:
   tsflow:
     build: .
     ports:
-      - "3000:3000"  # Frontend
-      - "3001:3001"  # API proxy
+      - "3000:3000"  # Frontend only
     environment:
       - VITE_TAILSCALE_API_KEY=${VITE_TAILSCALE_API_KEY}
       - VITE_TAILSCALE_TAILNET=${VITE_TAILSCALE_TAILNET}
-      - VITE_TAILSCALE_BASE_URL=http://localhost:3001/api/v2
+      - VITE_TAILSCALE_BASE_URL=https://api.tailscale.com/api/v2
       - NODE_ENV=production
     env_file:
       - .env

@@ -54,7 +54,6 @@ The fastest way to get started is using the pre-built Docker image:
 ```bash
 docker run -d \
   -p 3000:3000 \
-  -p 3001:3001 \
   -e VITE_TAILSCALE_API_KEY=your-api-key \
   -e VITE_TAILSCALE_TAILNET=your-tailnet \
   --name tsflow \
@@ -89,18 +88,16 @@ Then navigate to `http://localhost:3000` to start exploring your network!
 
 4. **Start the application**
    ```bash
-   # Start both frontend and API proxy
-   npm run dev:full
-   
-   # Or run separately:
-   npm run server  # API proxy (port 3001)
-   npm run dev     # Frontend (port 3000)
+   # Start the development server
+   npm run dev     # Frontend with built-in proxy (port 3000)
    ```
 
 5. **Open your browser**
    Navigate to `http://localhost:3000` to start exploring your network!
 
 ## Docker Deployment
+
+> **⚠️ CORS Notice**: Docker deployment serves a static build that makes direct API calls to Tailscale. Due to CORS restrictions, you'll need to use development mode (`npm run dev`) or set up a reverse proxy for production use. See [Troubleshooting](#cors-issues-in-productiondocker) for solutions.
 
 ### Using Pre-built Images (Recommended)
 
@@ -110,7 +107,6 @@ Pre-built container images are automatically built and published to GitHub Conta
 # Pull and run the latest image
 docker run -d \
   -p 3000:3000 \
-  -p 3001:3001 \
   -e VITE_TAILSCALE_API_KEY=your-api-key \
   -e VITE_TAILSCALE_TAILNET=your-tailnet \
   --name tsflow \
@@ -133,7 +129,6 @@ services:
     image: ghcr.io/rajsinghtech/tsflow:latest
     ports:
       - "3000:3000"
-      - "3001:3001"
     environment:
       - VITE_TAILSCALE_API_KEY=your-api-key
       - VITE_TAILSCALE_TAILNET=your-tailnet
@@ -164,7 +159,6 @@ docker build -t tsflow .
 # Run container
 docker run -d \
   -p 3000:3000 \
-  -p 3001:3001 \
   -e VITE_TAILSCALE_API_KEY=your-api-key \
   -e VITE_TAILSCALE_TAILNET=your-tailnet \
   --name tsflow \
@@ -194,7 +188,7 @@ npm run preview
 |----------|-------------|---------|
 | `VITE_TAILSCALE_API_KEY` | Your Tailscale API key | Required |
 | `VITE_TAILSCALE_TAILNET` | Your tailnet name | Required |
-| `VITE_TAILSCALE_BASE_URL` | API base URL | `http://localhost:3001/api/v2` |
+| `VITE_TAILSCALE_BASE_URL` | API base URL | `https://api.tailscale.com/api/v2` |
 
 ## Usage
 
@@ -229,6 +223,30 @@ Supported filter types:
 
 ## Troubleshooting
 
+### CORS Issues in Production/Docker
+
+When running TSFlow in production (Docker), you may encounter CORS errors because browsers block direct calls to Tailscale's API. Here are your options:
+
+**Option 1: Use Development Mode (Recommended for testing)**
+```bash
+npm run dev  # Uses built-in Vite proxy
+```
+
+**Option 2: Browser Extension (Testing only)**
+- Install a CORS-disabling browser extension
+- ⚠️ **Only use for testing, not production**
+
+**Option 3: Reverse Proxy (Production)**
+Set up a reverse proxy (nginx, Cloudflare, etc.) to add CORS headers:
+```nginx
+location /api/v2/ {
+    proxy_pass https://api.tailscale.com/api/v2/;
+    add_header Access-Control-Allow-Origin "*";
+    add_header Access-Control-Allow-Methods "GET, POST, OPTIONS";
+    add_header Access-Control-Allow-Headers "Authorization, Content-Type";
+}
+```
+
 ### No Network Logs Showing
 
 1. **Enable logging**: Network logging must be enabled in [Tailscale admin console](https://login.tailscale.com/admin/logs)
@@ -243,25 +261,33 @@ Supported filter types:
    ```bash
    curl -u "your-api-key:" "https://api.tailscale.com/api/v2/tailnet/your-tailnet/devices"
    ```
-3. **Server running**: Ensure the proxy server (port 3001) is running
-4. **CORS**: The proxy server handles CORS - don't access Tailscale API directly from browser
+3. **Development server**: Ensure the development server is running (npm run dev)
+4. **CORS**: The Vite development proxy handles CORS - direct API calls from browser will fail
 
 ### Docker Issues
 
 1. **Environment variables**: Ensure `.env` file is present and correct
-2. **Port conflicts**: Make sure ports 3000 and 3001 are available
+2. **Port conflicts**: Make sure port 3000 is available
 3. **Build cache**: Try `docker-compose build --no-cache` if having build issues
 
 ## Architecture
 
-The application uses a proxy server to handle CORS and API authentication:
+The application uses Vite's built-in proxy for development and direct API calls for production:
 
 ```
+Development:
 ┌─────────────────┐    ┌─────────────────┐    ┌──────────────────┐
-│   React App     │    │   Node.js API   │    │   Tailscale API  │
-│   (Port 3000)   │◄──►│   Proxy Server  │◄──►│  api.tailscale.  │
-│                 │    │   (Port 3001)   │    │       com        │
+│   React App     │    │   Vite Proxy    │    │   Tailscale API  │
+│   (Port 3000)   │◄──►│   (Built-in)    │◄──►│  api.tailscale.  │
+│                 │    │                 │    │       com        │
 └─────────────────┘    └─────────────────┘    └──────────────────┘
+
+Production:
+┌─────────────────┐                         ┌──────────────────┐
+│   React App     │◄───────────────────────►│   Tailscale API  │
+│   (Port 3000)   │    Direct API Calls     │  api.tailscale.  │
+│                 │    (CORS must be        │       com        │
+└─────────────────┘     handled by user)    └──────────────────┘
 ```
 
 TSFlow follows modern web development best practices:

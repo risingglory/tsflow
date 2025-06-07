@@ -19,7 +19,8 @@ const loadConfig = (): TailscaleConfig => {
   return {
     apiKey: savedApiKey || envApiKey || '',
     tailnet: savedTailnet || envTailnet || '',
-    baseUrl: envBaseUrl || 'http://localhost:3001/api/v2'
+    // Use local proxy in development, full URL in production
+    baseUrl: import.meta.env.DEV ? '/api/v2' : (envBaseUrl || 'https://api.tailscale.com/api/v2')
   }
 }
 
@@ -35,7 +36,7 @@ class TailscaleAPI {
     this.config = loadConfig()
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  private async request<T>(endpoint: string, options: Record<string, unknown> = {}): Promise<T> {
     // Always reload config to get latest credentials
     this.reloadConfig()
     
@@ -48,34 +49,64 @@ class TailscaleAPI {
 
     const url = `${this.config.baseUrl}${endpoint}`
     
-    const headers = {
-      'Authorization': `Basic ${btoa(`${this.config.apiKey}:`)}`,
+    // Debug logging
+    console.log('API Request Details:', {
+      isDev: import.meta.env.DEV,
+      baseUrl: this.config.baseUrl,
+      endpoint,
+      fullUrl: url,
+      tailnet: this.config.tailnet
+    })
+    
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...options.headers,
+    }
+    
+    // Only add Authorization header if not using proxy (in production)
+    if (!import.meta.env.DEV) {
+      headers['Authorization'] = `Bearer ${this.config.apiKey}`
+    } else {
+      // In development, log that we're using proxy
+      console.log('Using Vite proxy - Authorization will be added by proxy')
     }
 
     try {
       const response = await fetch(url, {
-        ...options,
+        method: 'GET',
         headers,
+        ...options,
       })
 
       if (!response.ok) {
-        const error: ApiError = {
-          message: `API request failed: ${response.statusText}`,
+        const errorData = await response.json().catch(() => ({}))
+        throw {
+          message: errorData.message || `HTTP ${response.status}: ${response.statusText}`,
           status: response.status,
-        }
-        throw error
+          details: errorData
+        } as ApiError
       }
 
       return await response.json()
     } catch (error) {
-      if (error instanceof Error) {
+      // Handle CORS errors specifically
+      if (error instanceof TypeError) {
+        if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
+          throw {
+            message: !import.meta.env.DEV 
+              ? 'CORS Error: Direct API calls to Tailscale are blocked by the browser. In production, you need to either: 1) Use a browser extension to disable CORS (for testing), 2) Set up a reverse proxy (nginx, Cloudflare, etc.), or 3) Use the development mode with "npm run dev" which includes a built-in proxy.'
+              : 'CORS Error: The Vite proxy should handle this. Try restarting the dev server.',
+            status: 0,
+          } as ApiError
+        }
+        
+        // Other network errors
         throw {
-          message: error.message,
+          message: 'Network error: Unable to connect to Tailscale API. Please check your internet connection.',
           status: 0,
         } as ApiError
       }
+      
+      // Re-throw API errors
       throw error
     }
   }
@@ -150,12 +181,15 @@ export const fetcher = async (url: string) => {
     }
     
     throw new Error(`Unknown API endpoint: ${url}`)
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Re-throw with better context for credential issues
-    if (error.status === 401 || error.status === 403) {
-      throw new Error('Invalid API credentials. Please check your settings.')
-    } else if (error.status === 404) {
-      throw new Error('Tailnet not found. Please check your tailnet name in settings.')
+    if (typeof error === 'object' && error !== null && 'status' in error) {
+      const apiError = error as ApiError
+      if (apiError.status === 401 || apiError.status === 403) {
+        throw new Error('Invalid API credentials. Please check your settings.')
+      } else if (apiError.status === 404) {
+        throw new Error('Tailnet not found. Please check your tailnet name in settings.')
+      }
     }
     throw error
   }
