@@ -12,9 +12,9 @@ const loadConfig = (): TailscaleConfig => {
   const savedTailnet = localStorage.getItem('tsflow-tailnet')
   
   // Fallback to environment variables
-  const envApiKey = import.meta.env.VITE_TAILSCALE_API_KEY
-  const envTailnet = import.meta.env.VITE_TAILSCALE_TAILNET
-  const envBaseUrl = import.meta.env.VITE_TAILSCALE_BASE_URL
+  const envApiKey = import.meta.env.TAILSCALE_ACCESS_TOKEN
+  const envTailnet = import.meta.env.TAILSCALE_TAILNET
+  const envBaseUrl = import.meta.env.PROXY_TAILSCALE_BASE_URL
   
   return {
     apiKey: savedApiKey || envApiKey || '',

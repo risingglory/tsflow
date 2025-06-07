@@ -30,8 +30,8 @@ export default function Settings() {
     const savedTailnet = localStorage.getItem('tsflow-tailnet')
     
     // Load from environment variables as fallback
-    const envApiKey = import.meta.env.VITE_TAILSCALE_API_KEY
-    const envTailnet = import.meta.env.VITE_TAILSCALE_TAILNET
+    const envApiKey = import.meta.env.TAILSCALE_ACCESS_TOKEN
+    const envTailnet = import.meta.env.TAILSCALE_TAILNET
     
     // Set API key (localStorage first, then env)
     const finalApiKey = savedApiKey || envApiKey || ''
@@ -311,7 +311,7 @@ export default function Settings() {
             <p>• <strong>API Key:</strong> Generate from Tailscale Admin Console → Settings → Keys</p>
             <p>• <strong>Permissions:</strong> API key needs "Devices" read access at minimum</p>
             <p>• <strong>Tailnet:</strong> Found in your Tailscale admin console URL or settings</p>
-            <p>• <strong>Environment Variables:</strong> Set VITE_TAILSCALE_API_KEY and VITE_TAILSCALE_TAILNET</p>
+            <p>• <strong>Environment Variables:</strong> Set TAILSCALE_ACCESS_TOKEN and TAILSCALE_TAILNET</p>
             <p>• <strong>Auto-loading:</strong> App loads env vars on startup if no saved config exists</p>
             <p>• <strong>Issues:</strong> Check your API key permissions and tailnet name</p>
           </div>

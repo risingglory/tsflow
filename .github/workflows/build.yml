@@ -11,6 +11,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  NODE_VERSION: '18'
 
 jobs:
   build:
@@ -25,34 +26,29 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
     
-    - name: Set up Go
-      uses: actions/setup-go@v4
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
       with:
-        go-version: '1.21'
-        cache: true
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
     
-    - name: Download dependencies
-      run: go mod download
+    - name: Install dependencies
+      run: npm ci
     
-    - name: Run tests
-      run: |
-        go test -v ./...
-        go vet ./...
+    - name: Run linting
+      run: npm run lint
     
-    - name: Build binary
-      run: |
-        go build -ldflags="-w -s" -o tsflow .
-        chmod +x tsflow
+    - name: Run type checking
+      run: npm run type-check
     
-    - name: Build multi-platform binaries
+    - name: Build application
+      run: npm run build
+    
+    - name: Create build archive
       if: github.event_name == 'release'
       run: |
-        GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o tsflow-linux-amd64 .
-        GOOS=linux GOARCH=arm64 go build -ldflags="-w -s" -o tsflow-linux-arm64 .
-        GOOS=darwin GOARCH=amd64 go build -ldflags="-w -s" -o tsflow-darwin-amd64 .
-        GOOS=darwin GOARCH=arm64 go build -ldflags="-w -s" -o tsflow-darwin-arm64 .
-        GOOS=windows GOARCH=amd64 go build -ldflags="-w -s" -o tsflow-windows-amd64.exe .
-        chmod +x tsflow-*
+        tar -czf tsflow-build.tar.gz dist/
+        sha256sum tsflow-build.tar.gz > checksums.txt
     
     - name: Set up Docker Buildx
       if: github.event_name != 'pull_request'
@@ -84,43 +80,45 @@ jobs:
         labels: |
           org.opencontainers.image.source=${{ github.event.repository.html_url }}
           org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.title=TSFlow
+          org.opencontainers.image.description=Tailscale Network Flow Visualizer
         cache-from: type=gha
         cache-to: type=gha,mode=max
-    
-
-    
-    - name: Create release archives
-      if: github.event_name == 'release'
-      run: |
-        tar -czf tsflow-linux-amd64.tar.gz tsflow-linux-amd64
-        tar -czf tsflow-linux-arm64.tar.gz tsflow-linux-arm64
-        tar -czf tsflow-darwin-amd64.tar.gz tsflow-darwin-amd64
-        tar -czf tsflow-darwin-arm64.tar.gz tsflow-darwin-arm64
-        zip tsflow-windows-amd64.zip tsflow-windows-amd64.exe
-        sha256sum *.tar.gz *.zip > checksums.txt
     
     - name: Upload release assets
       if: github.event_name == 'release'
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          *.tar.gz
-          *.zip
+          tsflow-build.tar.gz
           checksums.txt
         body: |
           ## TSFlow ${{ github.ref_name }}
           
+          A modern web application for visualizing and analyzing network traffic flows within Tailscale networks.
+          
           ### Docker Installation
           ```bash
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest
-          docker run -p 8080:8080 \
-            -e TAILSCALE_ACCESS_TOKEN="your-token" \
+          docker run -p 3000:3000 -p 3001:3001 \
             -e TAILSCALE_TAILNET="your-tailnet" \
+            -e TAILSCALE_ACCESS_TOKEN="your-access-token" \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest
           ```
           
-          ### Binary Installation
-          Download the appropriate binary for your platform from the assets below.
+          ### Manual Installation
+          1. Download the build archive from the assets below
+          2. Extract: `tar -xzf tsflow-build.tar.gz`
+          3. Serve the `dist/` directory with any static file server
+          4. Set up the API server separately using `server.js`
+          
+          ### Development Setup
+          ```bash
+          git clone https://github.com/${{ github.repository }}.git
+          cd tsflow
+          npm install
+          npm run dev:full
+          ```
         draft: false
         prerelease: false
       env:

@@ -49,7 +49,7 @@ EXPOSE 3000 3001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3001/api/v2/tailnet/' + process.env.VITE_TAILSCALE_TAILNET + '/devices', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+  CMD node -e "require('http').get('http://localhost:3001/api/v2/tailnet/' + process.env.TAILSCALE_TAILNET + '/devices', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
 # Start both the API server and serve the built React app
 CMD ["dumb-init", "sh", "-c", "node server.js & npx serve -s dist -l 3000"]

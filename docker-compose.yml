@@ -7,9 +7,9 @@ services:
       - "3000:3000"  # Frontend
       - "3001:3001"  # API proxy
     environment:
-      - VITE_TAILSCALE_API_KEY=${VITE_TAILSCALE_API_KEY}
-      - VITE_TAILSCALE_TAILNET=${VITE_TAILSCALE_TAILNET}
-      - VITE_TAILSCALE_BASE_URL=http://localhost:3001/api/v2
+      - TAILSCALE_ACCESS_TOKEN=${TAILSCALE_ACCESS_TOKEN}
+      - TAILSCALE_TAILNET=${TAILSCALE_TAILNET}
+      - PROXY_TAILSCALE_BASE_URL=http://localhost:3001/api/v2
       - NODE_ENV=production
     env_file:
       - .env

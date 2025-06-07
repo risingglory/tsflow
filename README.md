@@ -67,8 +67,8 @@ A modern, real-time web application for visualizing and analyzing network traffi
    
    Edit `.env` and add your Tailscale credentials:
    ```env
-   VITE_TAILSCALE_API_KEY=tskey-client-your-api-key-here
-   VITE_TAILSCALE_TAILNET=your-tailnet-name
+   TAILSCALE_ACCESS_TOKEN=tskey-client-your-api-key-here
+   TAILSCALE_TAILNET=your-tailnet-name
    ```
 
 4. **Start the application**
@@ -109,8 +109,8 @@ docker build -t tsflow .
 docker run -d \
   -p 3000:3000 \
   -p 3001:3001 \
-  -e VITE_TAILSCALE_API_KEY=your-api-key \
-  -e VITE_TAILSCALE_TAILNET=your-tailnet \
+  -e TAILSCALE_ACCESS_TOKEN=your-api-key \
+  -e TAILSCALE_TAILNET=your-tailnet \
   --name tsflow \
   tsflow
 ```
@@ -136,9 +136,9 @@ npm run preview
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `VITE_TAILSCALE_API_KEY` | Your Tailscale API key | Required |
-| `VITE_TAILSCALE_TAILNET` | Your tailnet name | Required |
-| `VITE_TAILSCALE_BASE_URL` | API base URL | `http://localhost:3001/api/v2` |
+| `TAILSCALE_ACCESS_TOKEN` | Your Tailscale API key | Required |
+| `TAILSCALE_TAILNET` | Your tailnet name | Required |
+| `PROXY_TAILSCALE_BASE_URL` | API base URL | `http://localhost:3001/api/v2` |
 
 ## Usage
 
