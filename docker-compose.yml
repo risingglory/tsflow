@@ -4,8 +4,31 @@ services:
   tsflow:
     build: .
     ports:
-      - "8080:8080"
+      - "3000:3000"  # Frontend
+      - "3001:3001"  # API proxy
     environment:
-      - TAILSCALE_ACCESS_TOKEN=${TAILSCALE_ACCESS_TOKEN}
-      - TAILSCALE_TAILNET=${TAILSCALE_TAILNET}
+      - VITE_TAILSCALE_API_KEY=${VITE_TAILSCALE_API_KEY}
+      - VITE_TAILSCALE_TAILNET=${VITE_TAILSCALE_TAILNET}
+      - VITE_TAILSCALE_BASE_URL=http://localhost:3001/api/v2
+      - NODE_ENV=production
+    env_file:
+      - .env
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      # Optional: Mount config if you want persistent settings
+      - tsflow_data:/app/data
+    networks:
+      - tsflow
+
+volumes:
+  tsflow_data:
+
+networks:
+  tsflow:
+    driver: bridge
