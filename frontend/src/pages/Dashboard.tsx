@@ -79,9 +79,19 @@ export default function Dashboard() {
           <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">
             {connectionStatus}
           </p>
-          <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-            API Connection
-          </p>
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              API Connection
+            </p>
+            <a
+              href="https://status.tailscale.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors hover:underline"
+            >
+              Service Status ↗
+            </a>
+          </div>
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm p-6">

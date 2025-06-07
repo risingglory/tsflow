@@ -77,6 +77,9 @@ const getProtocolName = (proto: number): string => {
 
 // Helper function to categorize IP addresses
 const categorizeIP = (ip: string): string[] => {
+  // DERP servers
+  if (ip === '127.3.3.40') return ['derp']
+  
   // IPv4 Tailscale addresses
   if (ip.startsWith('100.')) return ['tailscale']
   
@@ -128,7 +131,7 @@ const NetworkView: React.FC = () => {
   const [trafficTypeFilters, setTrafficTypeFilters] = useState<Set<string>>(new Set())
   const [ipCategoryFilters, setIpCategoryFilters] = useState<Set<string>>(new Set())
   const [ipVersionFilter, setIpVersionFilter] = useState<string>('all') // IPv4/IPv6 filter
-  const [timeRangeFilter, setTimeRangeFilter] = useState<string>('1h')
+  const [timeRangeFilter, setTimeRangeFilter] = useState<string>('5m')
   const [minBandwidth, setMinBandwidth] = useState<number>(0)
   const [maxBandwidth, setMaxBandwidth] = useState<number>(1000000000) // 1GB
   const [nodeCountFilter, setNodeCountFilter] = useState<number>(0) // Minimum connections
@@ -180,7 +183,7 @@ const NetworkView: React.FC = () => {
           since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
           break
         default:
-          since = new Date(now.getTime() - 60 * 60 * 1000) // Default to last 1h
+          since = new Date(now.getTime() - 5 * 60 * 1000) // Default to last 5m
       }
       params.append('start', since.toISOString())
       params.append('end', now.toISOString())
@@ -197,10 +200,10 @@ const NetworkView: React.FC = () => {
 
   const networkLogs = (Array.isArray(networkLogsData) && networkLogsData.length > 0 && 'logged' in networkLogsData[0]) ? networkLogsData : []
 
-  // Set default date range to show most recent data (last 1 hour)
+  // Set default date range to show most recent data (last 5 minutes)
   useEffect(() => {
     const now = new Date()
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000)
+    const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000)
     
     // Format for datetime-local input (YYYY-MM-DDTHH:mm)
     const formatForInput = (date: Date) => {
@@ -212,7 +215,7 @@ const NetworkView: React.FC = () => {
       return `${year}-${month}-${day}T${hours}:${minutes}`
     }
     
-    setStartDate(formatForInput(oneHourAgo))
+    setStartDate(formatForInput(fiveMinutesAgo))
     setEndDate(formatForInput(now))
     setLoading(false)
   }, [])
@@ -457,46 +460,20 @@ const NetworkView: React.FC = () => {
 
     svg.call(zoom)
 
-    // Group nodes by category for better clustering
-    const nodesByCategory = filteredData.nodes.reduce((acc, node) => {
-      const primaryTag = node.tags.find(tag => !tag.includes('+')) || 'unknown'
-      if (!acc[primaryTag]) acc[primaryTag] = []
-      acc[primaryTag].push(node)
-      return acc
-    }, {} as Record<string, typeof filteredData.nodes>)
 
-    // Calculate category centers in a grid pattern
-    const categories = Object.keys(nodesByCategory)
-    const cols = Math.ceil(Math.sqrt(categories.length))
-    const categoryPositions = categories.reduce((acc, category, index) => {
-      const row = Math.floor(index / cols)
-      const col = index % cols
-      const offsetX = (width / cols) * col + (width / cols) / 2
-      const offsetY = (height / Math.ceil(categories.length / cols)) * row + (height / Math.ceil(categories.length / cols)) / 2
-      acc[category] = { x: offsetX, y: offsetY }
-      return acc
-    }, {} as Record<string, { x: number; y: number }>)
 
-    // Create force simulation with better spacing and clustering
+        // Create force simulation with no gravity - pure network topology layout
     const simulation = d3.forceSimulation(filteredData.nodes)
-      .force('link', d3.forceLink(filteredData.links).id((d: any) => d.id).distance(250).strength(0.4))
-      .force('charge', d3.forceManyBody().strength(-800).distanceMin(100).distanceMax(1000))
-      .force('center', d3.forceCenter(width / 2, height / 2).strength(0.02))
-      .force('collision', d3.forceCollide().radius((d: any) => {
-        const maxTextLength = Math.max(d.displayName.length, d.ip.length, 12)
+      .force('link', d3.forceLink(filteredData.links).id((d: d3.SimulationNodeDatum) => (d as NetworkNode).id).distance(200).strength(0.5))
+      .force('charge', d3.forceManyBody().strength(-800).distanceMin(120).distanceMax(600))
+      .force('collision', d3.forceCollide().radius((d: d3.SimulationNodeDatum) => {
+        const node = d as NetworkNode
+        const maxTextLength = Math.max(node.displayName.length, node.ip.length, 12)
         const nodeWidth = Math.max(120, Math.min(maxTextLength * 8 + 20, 200))
-        return nodeWidth / 2 + 25 // More padding for better separation
+        return nodeWidth / 2 + 35 // Good spacing for fan-out
       }).strength(1.0).iterations(3))
-      .force('categoryX', d3.forceX().x((d: any) => {
-        const primaryTag = d.tags.find((tag: string) => !tag.includes('+')) || 'unknown'
-        return categoryPositions[primaryTag]?.x || width / 2
-      }).strength(0.1))
-      .force('categoryY', d3.forceY().y((d: any) => {
-        const primaryTag = d.tags.find((tag: string) => !tag.includes('+')) || 'unknown'
-        return categoryPositions[primaryTag]?.y || height / 2
-      }).strength(0.1))
-      .alphaDecay(0.003)
-      .velocityDecay(0.7)
+      .alphaDecay(0.01) // Quick settling
+      .velocityDecay(0.85) // Moderate friction for natural movement
 
     // Create links
     const link = g.append('g')
@@ -601,12 +578,14 @@ const NetworkView: React.FC = () => {
       .attr('x', (d: NetworkNode) => -getBoxDimensions(d).width / 2)
       .attr('y', (d: NetworkNode) => -getBoxDimensions(d).height / 2)
       .attr('fill', (d: NetworkNode) => {
+        if (d.tags.includes('derp')) return '#fecaca'
         if (d.tags.includes('tailscale')) return '#dbeafe'
         if (d.tags.includes('private')) return '#dcfce7'
         if (d.tags.includes('ipv6')) return '#e9d5ff'
         return '#fef3c7'
       })
       .attr('stroke', (d: NetworkNode) => {
+        if (d.tags.includes('derp')) return '#dc2626'
         if (d.tags.includes('tailscale')) return '#3b82f6'
         if (d.tags.includes('private')) return '#10b981'
         if (d.tags.includes('ipv6')) return '#8b5cf6'
@@ -667,12 +646,12 @@ const NetworkView: React.FC = () => {
       connectedNodeIds.add(d.id)
       
       // Hide/show nodes
-      node.style('opacity', (n: any) => {
+      node.style('opacity', (n: NetworkNode) => {
         return connectedNodeIds.has(n.id) ? 1 : 0.1
       })
 
       // Hide/show links
-      link.style('opacity', (l: any) => {
+      link.style('opacity', (l: NetworkLink) => {
         const sourceId = typeof l.source === 'string' ? l.source : l.source.id
         const targetId = typeof l.target === 'string' ? l.target : l.target.id
         return sourceId === d.id || targetId === d.id ? 0.9 : 0.05
@@ -680,7 +659,7 @@ const NetworkView: React.FC = () => {
       
       // Highlight selected node
       node.selectAll('rect')
-        .attr('stroke-width', (n: any) => n.id === d.id ? 4 : 2)
+        .attr('stroke-width', (n: unknown) => (n as NetworkNode).id === d.id ? 4 : 2)
     })
 
     // Handle link clicks with improved hiding
@@ -767,13 +746,13 @@ const NetworkView: React.FC = () => {
     setSearchQuery('')
     
     // Reset time range to default
-    setTimeRangeFilter('1h')
+    setTimeRangeFilter('5m')
     setUseCustomTimeRange(false)
     
     // Reset all filter sets to include all options
     if (uniqueProtocols.length > 0) setProtocolFilters(new Set(uniqueProtocols))
     if (uniqueTrafficTypes.length > 0) setTrafficTypeFilters(new Set(uniqueTrafficTypes))
-    if (uniqueIpCategories.length > 0) setIpCategoryFilters(new Set(uniqueIpCategories.filter(cat => cat !== 'ipv6')))
+    if (uniqueIpCategories.length > 0) setIpCategoryFilters(new Set(uniqueIpCategories.filter(cat => cat !== 'ipv6' && cat !== 'derp'))) // Keep derp hidden on reset
     
     // Reset other filters
     setIpVersionFilter('all')
@@ -849,7 +828,7 @@ const NetworkView: React.FC = () => {
   // Get unique values for filters with common defaults
   const baseProtocols = ['TCP', 'UDP', 'ICMP', 'Proto-255', 'Proto-0'] // Added Proto-0 to base protocols
   const baseTrafficTypes = ['virtual', 'subnet', 'physical'] // All possible traffic types
-  const baseIpCategories = ['tailscale', 'private', 'public'] // Common IP categories
+  const baseIpCategories = ['tailscale', 'private', 'public', 'derp'] // Common IP categories
 
   const dataProtocols = Array.from(new Set(links.map(l => l.protocol)))
   const dataTrafficTypes = Array.from(new Set(links.map(l => l.trafficType)))
@@ -866,7 +845,7 @@ const NetworkView: React.FC = () => {
     if (!filtersInitialized && uniqueProtocols.length > 0 && uniqueTrafficTypes.length > 0 && uniqueIpCategories.length > 0) {
       setProtocolFilters(new Set(uniqueProtocols))
       setTrafficTypeFilters(new Set(uniqueTrafficTypes))
-      setIpCategoryFilters(new Set(uniqueIpCategories.filter(cat => cat !== 'ipv6')))
+      setIpCategoryFilters(new Set(uniqueIpCategories.filter(cat => cat !== 'ipv6' && cat !== 'derp'))) // Hide derp by default
       setFiltersInitialized(true)
     }
   }, [uniqueProtocols, uniqueTrafficTypes, uniqueIpCategories, filtersInitialized])
@@ -1411,6 +1390,10 @@ const NetworkView: React.FC = () => {
                   <div className="flex items-center">
                     <div className="w-3 h-3 border-2 border-yellow-500 bg-yellow-100 dark:bg-yellow-900 mr-2"></div>
                     <span>Public Internet</span>
+                  </div>
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 border-2 border-red-600 bg-red-100 dark:bg-red-900 mr-2"></div>
+                    <span>DERP Servers</span>
                   </div>
                 </div>
                 

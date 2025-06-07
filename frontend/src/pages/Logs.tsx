@@ -59,6 +59,7 @@ export default function Logs() {
   const [useCustomTimeRange, setUseCustomTimeRange] = useState(false)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [timeRangeFilter, setTimeRangeFilter] = useState<string>('5m')
 
   // Fetch Tailscale network logs
   const networkLogsApiUrl = useMemo(() => {
@@ -68,16 +69,44 @@ export default function Logs() {
     if (useCustomTimeRange && startDate && endDate) {
       params.append('start', new Date(startDate).toISOString())
       params.append('end', new Date(endDate).toISOString())
-    } else {
-      // Default to last 5 minutes
+    } else if (timeRangeFilter !== 'all') {
+      // Convert time range to timestamp
       const now = new Date()
-      const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000)
-      params.append('start', fiveMinutesAgo.toISOString())
+      let since: Date
+      switch (timeRangeFilter) {
+        case '5m':
+          since = new Date(now.getTime() - 5 * 60 * 1000)
+          break
+        case '15m':
+          since = new Date(now.getTime() - 15 * 60 * 1000)
+          break
+        case '30m':
+          since = new Date(now.getTime() - 30 * 60 * 1000)
+          break
+        case '1h':
+          since = new Date(now.getTime() - 60 * 60 * 1000)
+          break
+        case '6h':
+          since = new Date(now.getTime() - 6 * 60 * 60 * 1000)
+          break
+        case '24h':
+          since = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+          break
+        case '7d':
+          since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+          break
+        case '30d':
+          since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+          break
+        default:
+          since = new Date(now.getTime() - 5 * 60 * 1000) // Default to last 5m
+      }
+      params.append('start', since.toISOString())
       params.append('end', now.toISOString())
     }
     
     return `${baseUrl}?${params.toString()}`
-  }, [useCustomTimeRange, startDate, endDate])
+  }, [timeRangeFilter, useCustomTimeRange, startDate, endDate])
 
   const { data: networkLogsData, mutate: refetchNetworkLogs } = useSWR(networkLogsApiUrl, fetcher, {
     errorRetryCount: 2,
@@ -169,7 +198,7 @@ export default function Logs() {
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, protocolFilter, trafficTypeFilter, useCustomTimeRange, startDate, endDate])
+  }, [searchQuery, protocolFilter, trafficTypeFilter, timeRangeFilter, useCustomTimeRange, startDate, endDate])
 
   // Calculate pagination values
   const totalPages = Math.ceil(filteredEntries.length / itemsPerPage)
@@ -220,7 +249,7 @@ export default function Logs() {
               <span>•</span>
               <span>{useCustomTimeRange && startDate && endDate ? 
                 `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}` :
-                'Last 5 minutes'}</span>
+                timeRangeFilter}</span>
             </div>
             <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
               <Calendar className="w-4 h-4" />
@@ -268,7 +297,7 @@ export default function Logs() {
                   </label>
                 </div>
 
-                {useCustomTimeRange && (
+                {useCustomTimeRange ? (
                   <div className="space-y-3">
                     <div>
                       <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Start Date & Time</label>
@@ -288,6 +317,23 @@ export default function Logs() {
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                       />
                     </div>
+                  </div>
+                ) : (
+                  <div className="flex space-x-2">
+                    <select
+                      value={timeRangeFilter}
+                      onChange={(e) => setTimeRangeFilter(e.target.value)}
+                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    >
+                      <option value="5m">Last 5 Minutes</option>
+                      <option value="15m">Last 15 Minutes</option>
+                      <option value="30m">Last 30 Minutes</option>
+                      <option value="1h">Last Hour</option>
+                      <option value="6h">Last 6 Hours</option>
+                      <option value="24h">Last 24 Hours</option>
+                      <option value="7d">Last 7 Days</option>
+                      <option value="30d">Last 30 Days</option>
+                    </select>
                   </div>
                 )}
                 
@@ -372,7 +418,7 @@ export default function Logs() {
                   <div>Log Entries: {networkLogs.length.toLocaleString()}</div>
                   <div>Time Range: {useCustomTimeRange && startDate && endDate ? 
                     `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}` :
-                    'Last 5 minutes'}</div>
+                    timeRangeFilter}</div>
                 </div>
               </div>
             </div>
