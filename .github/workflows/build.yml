@@ -11,16 +11,10 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  NODE_VERSION: '18'
 
 jobs:
-  build:
+  test-frontend:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
-      id-token: write
-      attestations: write
     
     steps:
     - name: Checkout repository
@@ -29,33 +23,74 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: ${{ env.NODE_VERSION }}
+        node-version: '20'
         cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
     
-    - name: Install dependencies
+    - name: Install frontend dependencies
+      working-directory: ./frontend
       run: npm ci
     
-    - name: Run linting
+    - name: Run frontend linting
+      working-directory: ./frontend
       run: npm run lint
     
-    - name: Run type checking
+    - name: Run frontend type checking
+      working-directory: ./frontend
       run: npm run type-check
     
-    - name: Build application
+    - name: Build frontend
+      working-directory: ./frontend
       run: npm run build
+
+  test-backend:
+    runs-on: ubuntu-latest
     
-    - name: Create build archive
-      if: github.event_name == 'release'
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        cache-dependency-path: backend/go.sum
+    
+    - name: Install backend dependencies
+      working-directory: ./backend
+      run: go mod download
+    
+    - name: Run backend tests
+      working-directory: ./backend
+      run: go test ./...
+    
+    - name: Run backend linting
+      working-directory: ./backend
       run: |
-        tar -czf tsflow-build.tar.gz dist/
-        sha256sum tsflow-build.tar.gz > checksums.txt
+        go fmt ./...
+        go vet ./...
+    
+    - name: Build backend
+      working-directory: ./backend
+      run: go build -o tsflow-backend ./main.go
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: [test-frontend, test-backend]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
     
     - name: Set up Docker Buildx
-      if: github.event_name != 'pull_request'
       uses: docker/setup-buildx-action@v3
     
     - name: Convert repository name to lowercase
-      if: github.event_name != 'pull_request'
       run: |
         echo "IMAGE_NAME_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
     
@@ -65,61 +100,193 @@ jobs:
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
-        password: ${{ secrets.GH_TOKEN }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha
+          type=raw,value=latest,enable={{is_default_branch}}
     
     - name: Build and push Docker image
-      if: github.event_name != 'pull_request'
+      id: build
       uses: docker/build-push-action@v5
       with:
         context: .
         platforms: linux/amd64,linux/arm64
-        push: true
-        tags: |
-          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest
-          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:${{ github.sha }}
-        labels: |
-          org.opencontainers.image.source=${{ github.event.repository.html_url }}
-          org.opencontainers.image.revision=${{ github.sha }}
-          org.opencontainers.image.title=TSFlow
-          org.opencontainers.image.description=Tailscale Network Flow Visualizer
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
     
+    - name: Generate artifact attestation
+      if: github.event_name != 'pull_request'
+      uses: actions/attest-build-provenance@v1
+      with:
+        subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}
+        subject-digest: ${{ steps.build.outputs.digest }}
+        push-to-registry: true
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    if: github.event_name == 'release'
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        cache-dependency-path: backend/go.sum
+    
+    - name: Build frontend
+      working-directory: ./frontend
+      run: |
+        npm ci
+        npm run build
+    
+    - name: Build backend binaries
+      working-directory: ./backend
+      run: |
+        go mod download
+        
+        # Build for multiple platforms
+        GOOS=linux GOARCH=amd64 go build -o ../dist/tsflow-linux-amd64 ./main.go
+        GOOS=linux GOARCH=arm64 go build -o ../dist/tsflow-linux-arm64 ./main.go
+        GOOS=darwin GOARCH=amd64 go build -o ../dist/tsflow-darwin-amd64 ./main.go
+        GOOS=darwin GOARCH=arm64 go build -o ../dist/tsflow-darwin-arm64 ./main.go
+        GOOS=windows GOARCH=amd64 go build -o ../dist/tsflow-windows-amd64.exe ./main.go
+    
+    - name: Create release archives
+      run: |
+        mkdir -p release
+        
+        # Create frontend build archive
+        cd frontend
+        tar -czf ../release/tsflow-frontend-${{ github.ref_name }}.tar.gz dist/
+        cd ..
+        
+        # Create combined archive with frontend + backend binaries
+        mkdir -p tsflow-${{ github.ref_name }}
+        cp -r frontend/dist tsflow-${{ github.ref_name }}/
+        cp -r dist/* tsflow-${{ github.ref_name }}/
+        cp docker-compose.yml tsflow-${{ github.ref_name }}/
+        cp env.example tsflow-${{ github.ref_name }}/
+        cp README.md tsflow-${{ github.ref_name }}/
+        
+        tar -czf release/tsflow-${{ github.ref_name }}.tar.gz tsflow-${{ github.ref_name }}/
+        
+        # Generate checksums
+        cd release
+        sha256sum *.tar.gz > checksums.txt
+        cd ..
+    
+    - name: Convert repository name to lowercase
+      run: |
+        echo "IMAGE_NAME_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
+    
     - name: Upload release assets
-      if: github.event_name == 'release'
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          tsflow-build.tar.gz
-          checksums.txt
+          release/*.tar.gz
+          release/checksums.txt
         body: |
           ## TSFlow ${{ github.ref_name }}
           
           A modern web application for visualizing and analyzing network traffic flows within Tailscale networks.
           
-          ### Docker Installation
+          ### 🐳 Docker Installation (Recommended)
+          
+          **Quick Start:**
           ```bash
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest
-          docker run -p 3000:3000 -p 3001:3001 \
-            -e TAILSCALE_TAILNET="your-tailnet" \
-            -e TAILSCALE_ACCESS_TOKEN="your-access-token" \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest
+          # Create environment file
+          curl -o .env https://raw.githubusercontent.com/${{ github.repository }}/main/env.example
+          # Edit .env with your Tailscale credentials
+          
+          # Run with Docker
+          docker run -d \
+            -p 8080:8080 \
+            --env-file .env \
+            --name tsflow \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:${{ github.ref_name }}
           ```
           
-          ### Manual Installation
-          1. Download the build archive from the assets below
-          2. Extract: `tar -xzf tsflow-build.tar.gz`
-          3. Serve the `dist/` directory with any static file server
-          4. Set up the API server separately using `server.js`
+          **Docker Compose:**
+          ```bash
+          # Download and extract release
+          wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/tsflow-${{ github.ref_name }}.tar.gz
+          tar -xzf tsflow-${{ github.ref_name }}.tar.gz
+          cd tsflow-${{ github.ref_name }}
           
-          ### Development Setup
+          # Configure environment
+          cp env.example .env
+          # Edit .env with your credentials
+          
+          # Run with Docker Compose
+          docker-compose up -d
+          ```
+          
+          ### 📦 Manual Installation
+          
+          **Binary Installation:**
+          1. Download the appropriate binary for your platform from the assets below
+          2. Download the frontend build: `tsflow-frontend-${{ github.ref_name }}.tar.gz`
+          3. Extract frontend: `tar -xzf tsflow-frontend-${{ github.ref_name }}.tar.gz`
+          4. Set environment variables (see `env.example`)
+          5. Run the binary: `./tsflow-<platform>`
+          
+          **Supported Platforms:**
+          - Linux (amd64, arm64)
+          - macOS (amd64, arm64)  
+          - Windows (amd64)
+          
+          ### 🛠 Development Setup
+          
           ```bash
           git clone https://github.com/${{ github.repository }}.git
           cd tsflow
-          npm install
-          npm run dev:full
+          
+          # Backend
+          cd backend && go mod download && go run main.go &
+          
+          # Frontend  
+          cd frontend && npm install && npm run build
           ```
+          
+          ### 📋 What's Included
+          
+          - **Go Backend**: High-performance API server with Tailscale integration
+          - **React Frontend**: Modern web interface with real-time visualization
+          - **Docker Support**: Production-ready containerization
+          - **Multi-platform Binaries**: Native builds for all major platforms
+          
+          ### 🚀 Features
+          
+          - Real-time network topology visualization
+          - Comprehensive traffic analytics and filtering
+          - Device management and monitoring
+          - No CORS issues (backend handles all API calls)
+          - Production-ready architecture
         draft: false
         prerelease: false
       env:
-        GH_TOKEN: ${{ secrets.GH_TOKEN }} 
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

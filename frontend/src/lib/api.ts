@@ -1,0 +1,215 @@
+import type { 
+  TailscaleDevice, 
+  NetworkFlowLog, 
+  TailscaleConfig,
+  ApiError 
+} from '@/types/tailscale'
+
+// Backend configuration
+const BACKEND_BASE_URL = import.meta.env.DEV 
+  ? 'http://localhost:8080' // Development backend
+  : '' // Production: same origin (backend serves frontend)
+
+class TailscaleAPI {
+  private baseUrl: string
+
+  constructor() {
+    this.baseUrl = BACKEND_BASE_URL
+  }
+
+  private async request<T>(endpoint: string, options: Record<string, unknown> = {}): Promise<T> {
+    const url = `${this.baseUrl}${endpoint}`
+    
+    // Debug logging
+    console.log('Backend API Request:', {
+      isDev: import.meta.env.DEV,
+      baseUrl: this.baseUrl,
+      endpoint,
+      fullUrl: url
+    })
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        ...options,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw {
+          message: errorData.message || errorData.error || `HTTP ${response.status}: ${response.statusText}`,
+          status: response.status,
+          details: errorData
+        } as ApiError
+      }
+
+      return await response.json()
+    } catch (error) {
+      // Handle network errors
+      if (error instanceof TypeError) {
+        if (error.message.includes('Failed to fetch')) {
+          throw {
+            message: import.meta.env.DEV 
+              ? 'Cannot connect to backend server. Make sure the Go backend is running on port 8080.'
+              : 'Backend service unavailable. Please try again later.',
+            status: 0,
+          } as ApiError
+        }
+      }
+      
+      // Re-throw API errors
+      throw error
+    }
+  }
+
+  // Get all devices in the tailnet
+  async getDevices(): Promise<TailscaleDevice[]> {
+    const response = await this.request<{ devices: TailscaleDevice[] }>(
+      `/api/devices`
+    )
+    return response.devices
+  }
+
+  // Get network flow logs
+  async getNetworkLogs(queryParams?: string): Promise<NetworkFlowLog[]> {
+    const endpoint = queryParams ? `/api/network-logs?${queryParams}` : `/api/network-logs`
+    const response = await this.request<{logs: NetworkFlowLog[]}>(endpoint)
+    return response.logs || []
+  }
+
+  // Get network map data
+  async getNetworkMap(): Promise<any> {
+    return await this.request(`/api/network-map`)
+  }
+
+  // Get device flows
+  async getDeviceFlows(deviceId: string): Promise<any> {
+    return await this.request(`/api/devices/${deviceId}/flows`)
+  }
+
+  // Health check
+  async healthCheck(): Promise<any> {
+    return await this.request('/health')
+  }
+
+  // Legacy method for backwards compatibility
+  updateConfig(_newConfig: Partial<TailscaleConfig>) {
+    console.warn('updateConfig is deprecated when using backend API')
+  }
+
+  // Legacy method for backwards compatibility
+  getConfig(): Omit<TailscaleConfig, 'apiKey'> {
+    return {
+      tailnet: 'configured-on-backend',
+      baseUrl: this.baseUrl
+    }
+  }
+
+  // Check if backend is configured and available
+  async isConfigured(): Promise<boolean> {
+    try {
+      await this.healthCheck()
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  // Legacy method for backwards compatibility
+  getMaskedApiKey(): string {
+    return 'Configured on backend'
+  }
+}
+
+// Create singleton instance
+export const tailscaleAPI = new TailscaleAPI()
+
+// SWR fetcher function with better error handling
+export const fetcher = async (url: string) => {
+  try {
+    // Handle different types of requests based on URL pattern
+    if (url.startsWith('/devices')) {
+      return await tailscaleAPI.getDevices()
+    }
+    
+    if (url.startsWith('/network-logs')) {
+      // Extract query parameters from URL
+      const urlObj = new URL(url, 'http://localhost') // dummy base for parsing
+      const queryParams = urlObj.search.substring(1) // Remove the '?' prefix
+      return await tailscaleAPI.getNetworkLogs(queryParams)
+    }
+
+    if (url.startsWith('/network-map')) {
+      return await tailscaleAPI.getNetworkMap()
+    }
+    
+    if (url.includes('/flows')) {
+      const deviceId = url.split('/')[2] // Extract device ID from URL like /devices/123/flows
+      return await tailscaleAPI.getDeviceFlows(deviceId)
+    }
+
+    throw new Error(`Unknown API endpoint: ${url}`)
+  } catch (error: unknown) {
+    // Re-throw with better context
+    if (typeof error === 'object' && error !== null && 'status' in error) {
+      const apiError = error as ApiError
+      if (apiError.status === 500) {
+        throw new Error('Backend server error. Please check backend configuration and logs.')
+      } else if (apiError.status === 401 || apiError.status === 403) {
+        throw new Error('Backend authentication error. Please check backend Tailscale API credentials.')
+      }
+    }
+    throw error
+  }
+}
+
+// Utility function to format RFC3339 timestamp
+export const toRFC3339 = (date: Date): string => {
+  return date.toISOString()
+}
+
+// Utility function to parse search queries
+export const parseSearchQuery = (query: string) => {
+  const parts = query.toLowerCase().split(/\s+/)
+  const parsed: Record<string, string> = {}
+  
+  for (const part of parts) {
+    if (part.includes(':')) {
+      const [key, value] = part.split(':', 2)
+      parsed[key] = value
+    } else {
+      parsed.text = part
+    }
+  }
+  
+  return parsed
+}
+
+// Utility function to format bytes
+export const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return '0 B'
+  
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
+}
+
+// Utility function to format duration
+export const formatDuration = (ms: number): string => {
+  const seconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+  
+  if (days > 0) return `${days}d ${hours % 24}h`
+  if (hours > 0) return `${hours}h ${minutes % 60}m`
+  if (minutes > 0) return `${minutes}m ${seconds % 60}s`
+  return `${seconds}s`
+}
+
+export default tailscaleAPI 

@@ -1,52 +1,62 @@
-# Multi-stage build for React application
-FROM node:18-alpine AS base
+# Multi-stage build for TSFlow with Go backend and React frontend
 
-# Install dependencies only when needed
-FROM base AS deps
-WORKDIR /app
+# Stage 1: Build React frontend
+FROM node:20-alpine AS frontend-build
 
-# Copy package files
-COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+WORKDIR /app/frontend
 
-# Build the application
-FROM base AS builder
-WORKDIR /app
+# Copy frontend package files
+COPY frontend/package*.json ./
 
-# Copy package files and install all dependencies (including dev)
-COPY package*.json ./
+# Install dependencies (without --only=production to get dev dependencies needed for build)
 RUN npm ci
 
-# Copy source code
-COPY . .
+# Copy frontend source
+COPY frontend/ ./
 
-# Build the React app
+# Build frontend
 RUN npm run build
 
-# Production image - serve static files
-FROM node:18-alpine AS runner
+# Stage 2: Build Go backend
+FROM golang:1.21-alpine AS backend-build
+
+WORKDIR /app/backend
+
+# Install git (needed for go mod download)
+RUN apk add --no-cache git
+
+# Copy go mod files
+COPY backend/go.mod backend/go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy backend source
+COPY backend/ ./
+
+# Build the backend binary
+RUN CGO_ENABLED=0 GOOS=linux go build -o tsflow-backend ./main.go
+
+# Stage 3: Final runtime image
+FROM alpine:latest
+
+# Install ca-certificates for HTTPS requests
+RUN apk --no-cache add ca-certificates
+
 WORKDIR /app
 
-# Install serve globally for serving static files
-RUN npm install -g serve
+# Copy the backend binary
+COPY --from=backend-build /app/backend/tsflow-backend ./
 
-# Copy built application
-COPY --from=builder /app/dist ./dist
-
-# Create non-root user
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
-
-# Change ownership to non-root user
-RUN chown -R nextjs:nodejs /app
-USER nextjs
+# Copy the frontend build
+COPY --from=frontend-build /app/frontend/dist ./dist
 
 # Expose port
-EXPOSE 3000
+EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
-# Start serve with SPA support
-CMD ["serve", "-s", "dist", "-l", "3000"]
+# Run the backend (which serves the frontend)
+CMD ["./tsflow-backend"] 

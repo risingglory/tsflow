@@ -1,20 +1,18 @@
-version: '3.8'
-
 services:
   tsflow:
     build: .
     ports:
-      - "3000:3000"  # Frontend only
+      - "8080:8080"  # Backend serves both API and frontend
     environment:
-      - VITE_TAILSCALE_API_KEY=${VITE_TAILSCALE_API_KEY}
-      - VITE_TAILSCALE_TAILNET=${VITE_TAILSCALE_TAILNET}
-      - VITE_TAILSCALE_BASE_URL=https://api.tailscale.com/api/v2
-      - NODE_ENV=production
+      - TAILSCALE_API_KEY=${TAILSCALE_API_KEY}
+      - TAILSCALE_TAILNET=${TAILSCALE_TAILNET}
+      - PORT=8080
+      - ENVIRONMENT=production
     env_file:
       - .env
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
