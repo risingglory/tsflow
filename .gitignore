@@ -70,7 +70,7 @@ Thumbs.db
 coverage/
 .nyc_output
 .cache/
-.parcel-cache/
+.parcel-cache/ 
 
 # Docker
 .dockerignore

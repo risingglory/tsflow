@@ -128,7 +128,7 @@ const NetworkView: React.FC = () => {
   const [trafficTypeFilters, setTrafficTypeFilters] = useState<Set<string>>(new Set())
   const [ipCategoryFilters, setIpCategoryFilters] = useState<Set<string>>(new Set())
   const [ipVersionFilter, setIpVersionFilter] = useState<string>('all') // IPv4/IPv6 filter
-  const [timeRangeFilter, setTimeRangeFilter] = useState<string>('all')
+  const [timeRangeFilter, setTimeRangeFilter] = useState<string>('1h')
   const [minBandwidth, setMinBandwidth] = useState<number>(0)
   const [maxBandwidth, setMaxBandwidth] = useState<number>(1000000000) // 1GB
   const [nodeCountFilter, setNodeCountFilter] = useState<number>(0) // Minimum connections
@@ -137,7 +137,7 @@ const NetworkView: React.FC = () => {
   const { data: deviceData, error: deviceError, mutate: refetchDevices } = useSWR('/devices', fetcher, {
     errorRetryCount: 2,
     revalidateOnFocus: false,
-    refreshInterval: 30000 // Refresh every 30s
+    refreshInterval: 60000 // Reduced from 30s to 60s
   })
 
   const devices = (Array.isArray(deviceData) && deviceData.length > 0 && 'name' in deviceData[0]) ? deviceData as TailscaleDevice[] : []
@@ -180,15 +180,9 @@ const NetworkView: React.FC = () => {
           since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
           break
         default:
-          since = new Date(now.getTime() - 24 * 60 * 60 * 1000) // Default to last 24h for 'all'
+          since = new Date(now.getTime() - 60 * 60 * 1000) // Default to last 1h
       }
       params.append('start', since.toISOString())
-      params.append('end', now.toISOString())
-    } else {
-      // Default to last 1 hour for 'all' to ensure enough data for filters
-      const now = new Date()
-      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000)
-      params.append('start', oneHourAgo.toISOString())
       params.append('end', now.toISOString())
     }
     
@@ -198,7 +192,7 @@ const NetworkView: React.FC = () => {
   const { data: networkLogsData, error: networkLogsError, mutate: refetchNetworkLogs } = useSWR(networkLogsApiUrl, fetcher, {
     errorRetryCount: 2,
     revalidateOnFocus: false,
-    refreshInterval: useCustomTimeRange || timeRangeFilter !== 'all' ? 30000 : 0 // Refresh every 30s for time-filtered data
+    refreshInterval: 120000 // Refresh every 2 minutes
   })
 
   const networkLogs = (Array.isArray(networkLogsData) && networkLogsData.length > 0 && 'logged' in networkLogsData[0]) ? networkLogsData : []
@@ -223,13 +217,6 @@ const NetworkView: React.FC = () => {
     setLoading(false)
   }, [])
   
-  // Reset initial load flag when new network data comes in
-  useEffect(() => {
-    if (networkLogs && networkLogs.length > 0) {
-      setIsInitialLoad(true)
-    }
-  }, [networkLogs])
-
   // Process network logs to create nodes and links
   const { nodes, links } = useMemo(() => {
     if (!networkLogs || networkLogs.length === 0) {
@@ -433,12 +420,20 @@ const NetworkView: React.FC = () => {
              filteredNodes.some(n => n.id === targetId)
     })
     
+    // Remove nodes that have no connections after link filtering
+    const connectedNodeIds = new Set<string>()
+    filteredLinks.forEach(link => {
+      const sourceId = typeof link.source === 'string' ? link.source : link.source.id
+      const targetId = typeof link.target === 'string' ? link.target : link.target.id
+      connectedNodeIds.add(sourceId)
+      connectedNodeIds.add(targetId)
+    })
+    
+    filteredNodes = filteredNodes.filter(node => connectedNodeIds.has(node.id))
+    
     return { nodes: filteredNodes, links: filteredLinks }
   }, [nodes, links, searchQuery, protocolFilters, trafficTypeFilters, ipCategoryFilters, ipVersionFilter, minBandwidth, maxBandwidth, nodeCountFilter])
 
-  // Track if this is the initial load or just a filter change
-  const [isInitialLoad, setIsInitialLoad] = useState(true)
-  
   // D3 visualization
   useEffect(() => {
     if (!svgRef.current || filteredData.nodes.length === 0) return
@@ -654,7 +649,7 @@ const NetworkView: React.FC = () => {
 
     // Removed category tags from display as requested
 
-    // Handle node clicks
+    // Handle node clicks with improved hiding
     node.on('click', (_, d) => {
       setSelectedNode(d)
       setSelectedLink(null)
@@ -668,31 +663,27 @@ const NetworkView: React.FC = () => {
         if (targetId === d.id) connectedNodeIds.add(sourceId)
       })
       
-      // Highlight nodes
-      node.selectAll('rect')
-        .attr('stroke-width', (n: any) => n.id === d.id ? 4 : 2)
-        .attr('stroke-opacity', (n: any) => {
-          return n.id === d.id || connectedNodeIds.has(n.id) ? 1 : 0.3
-        })
-        .attr('fill-opacity', (n: any) => {
-          return n.id === d.id || connectedNodeIds.has(n.id) ? 1 : 0.3
-        })
+      // Add the selected node itself
+      connectedNodeIds.add(d.id)
+      
+      // Hide/show nodes
+      node.style('opacity', (n: any) => {
+        return connectedNodeIds.has(n.id) ? 1 : 0.1
+      })
 
-      // Highlight text
-      node.selectAll('text')
-        .attr('opacity', (n: any) => {
-          return n.id === d.id || connectedNodeIds.has(n.id) ? 1 : 0.3
-        })
-
-      // Highlight links
-      link.attr('stroke-opacity', (l: any) => {
+      // Hide/show links
+      link.style('opacity', (l: any) => {
         const sourceId = typeof l.source === 'string' ? l.source : l.source.id
         const targetId = typeof l.target === 'string' ? l.target : l.target.id
-        return sourceId === d.id || targetId === d.id ? 0.9 : 0.1
+        return sourceId === d.id || targetId === d.id ? 0.9 : 0.05
       })
+      
+      // Highlight selected node
+      node.selectAll('rect')
+        .attr('stroke-width', (n: any) => n.id === d.id ? 4 : 2)
     })
 
-    // Handle link clicks
+    // Handle link clicks with improved hiding
     link.on('click', (_, d) => {
       setSelectedLink(d)
       setSelectedNode(null)
@@ -714,23 +705,16 @@ const NetworkView: React.FC = () => {
         }
       })
       
-      // Highlight nodes
-      node.selectAll('rect')
-        .attr('stroke-width', (n: any) => connectedNodeIds.has(n.id) ? 3 : 2)
-        .attr('stroke-opacity', (n: any) => connectedNodeIds.has(n.id) ? 1 : 0.2)
-        .attr('fill-opacity', (n: any) => connectedNodeIds.has(n.id) ? 1 : 0.2)
+      // Hide/show nodes
+      node.style('opacity', (n: any) => connectedNodeIds.has(n.id) ? 1 : 0.1)
 
-      // Highlight text
-      node.selectAll('text')
-        .attr('opacity', (n: any) => connectedNodeIds.has(n.id) ? 1 : 0.2)
-
-      // Highlight links
-      link.attr('stroke-opacity', (l: any) => {
+      // Hide/show links with better highlighting
+      link.style('opacity', (l: any) => {
         const linkSourceId = typeof l.source === 'string' ? l.source : l.source.id
         const linkTargetId = typeof l.target === 'string' ? l.target : l.target.id
         if (linkSourceId === sourceId && linkTargetId === targetId) return 1.0 // Selected link
         if (connectedNodeIds.has(linkSourceId) && connectedNodeIds.has(linkTargetId)) return 0.6 // Connected links
-        return 0.1 // Other links
+        return 0.05 // Other links
       })
       .attr('stroke-width', (l: any) => {
         const linkSourceId = typeof l.source === 'string' ? l.source : l.source.id
@@ -739,6 +723,10 @@ const NetworkView: React.FC = () => {
           Math.min(Math.max(Math.log(l.totalBytes + 1) / 2, 1), 8) * 1.5 : 
           Math.min(Math.max(Math.log(l.totalBytes + 1) / 2, 1), 8)
       })
+      
+      // Highlight connected nodes
+      node.selectAll('rect')
+        .attr('stroke-width', (n: any) => connectedNodeIds.has(n.id) ? 3 : 2)
     })
 
     // Clear highlight on background click
@@ -748,54 +736,16 @@ const NetworkView: React.FC = () => {
         setSelectedLink(null)
         
         // Reset all styling
-        node.selectAll('rect')
+        node.style('opacity', 1)
+          .selectAll('rect')
           .attr('stroke-width', 2)
-          .attr('stroke-opacity', 1)
-          .attr('fill-opacity', 1)
         
-        node.selectAll('text')
-          .attr('opacity', 1)
-        
-        link.attr('stroke-opacity', 0.6)
+        link.style('opacity', 0.6)
           .attr('stroke-width', (d: any) => Math.min(Math.max(Math.log(d.totalBytes + 1) / 2, 1), 8))
       }
     })
 
-    // Function to fit all nodes in view
-    const fitNodesToView = () => {
-      if (filteredData.nodes.length === 0) return
-
-      // Calculate bounding box of all nodes
-      const padding = 50
-      const minX = Math.min(...filteredData.nodes.map(d => d.x!)) - padding
-      const maxX = Math.max(...filteredData.nodes.map(d => d.x!)) + padding
-      const minY = Math.min(...filteredData.nodes.map(d => d.y!)) - padding
-      const maxY = Math.max(...filteredData.nodes.map(d => d.y!)) + padding
-
-      const dataWidth = maxX - minX
-      const dataHeight = maxY - minY
-
-      // Calculate scale to fit all data
-      const scale = Math.min(width / dataWidth, height / dataHeight) * 0.9 // 0.9 for some extra padding
-
-      // Calculate translation to center the data
-      const translateX = (width - dataWidth * scale) / 2 - minX * scale
-      const translateY = (height - dataHeight * scale) / 2 - minY * scale
-
-      // Apply the transform
-      svg.transition()
-        .duration(1000)
-        .call(
-          zoom.transform,
-          d3.zoomIdentity.translate(translateX, translateY).scale(scale)
-        )
-    }
-
-    // Track if we've already auto-fitted for this dataset
-    let hasAutoFitted = false
-    let tickCount = 0
-
-    // Update positions on simulation tick
+    // Update positions on simulation tick (removed auto-fit functionality)
     simulation.on('tick', () => {
       link
         .attr('x1', (d: any) => d.source.x)
@@ -804,37 +754,43 @@ const NetworkView: React.FC = () => {
         .attr('y2', (d: any) => d.target.y)
 
       node.attr('transform', (d: NetworkNode) => `translate(${d.x},${d.y})`)
-
-      // Auto-fit only on initial load, not on filter changes
-      tickCount++
-      if (isInitialLoad && !hasAutoFitted && (tickCount > 100 || simulation.alpha() < 0.1)) {
-        hasAutoFitted = true
-        setTimeout(() => {
-          fitNodesToView()
-          setIsInitialLoad(false) // Mark initial load as complete
-        }, 100)
-      }
     })
 
   }, [filteredData])
 
-  const clearSelection = () => {
+  const resetAllFilters = () => {
+    // Clear selections
     setSelectedNode(null)
     setSelectedLink(null)
     
-    // Reset all styling
+    // Reset search
+    setSearchQuery('')
+    
+    // Reset time range to default
+    setTimeRangeFilter('1h')
+    setUseCustomTimeRange(false)
+    
+    // Reset all filter sets to include all options
+    if (uniqueProtocols.length > 0) setProtocolFilters(new Set(uniqueProtocols))
+    if (uniqueTrafficTypes.length > 0) setTrafficTypeFilters(new Set(uniqueTrafficTypes))
+    if (uniqueIpCategories.length > 0) setIpCategoryFilters(new Set(uniqueIpCategories.filter(cat => cat !== 'ipv6')))
+    
+    // Reset other filters
+    setIpVersionFilter('all')
+    setMinBandwidth(0)
+    setMaxBandwidth(bandwidthRange.max)
+    setNodeCountFilter(0)
+    
+    // Reset visualization styling
     if (svgRef.current) {
       const svg = d3.select(svgRef.current)
-      svg.selectAll('rect')
+      svg.selectAll('g').selectAll('g')
+        .style('opacity', 1)
+        .selectAll('rect')
         .attr('stroke-width', 2)
-        .attr('stroke-opacity', 1)
-        .attr('fill-opacity', 1)
-      
-      svg.selectAll('text')
-        .attr('opacity', 1)
       
       svg.selectAll('line')
-        .attr('stroke-opacity', 0.6)
+        .style('opacity', 0.6)
         .attr('stroke-width', (d: any) => Math.min(Math.max(Math.log(d.totalBytes + 1) / 2, 1), 8))
     }
   }
@@ -845,18 +801,30 @@ const NetworkView: React.FC = () => {
       const width = 1200
       const height = 800
       
+      // Check if nodes have coordinates
+      const nodesWithCoords = filteredData.nodes.filter(d => d.x !== undefined && d.y !== undefined)
+      
+      if (nodesWithCoords.length === 0) {
+        // If no coordinates, just reset to center
+        svg.transition().duration(750).call(
+          d3.zoom<SVGSVGElement, unknown>().transform,
+          d3.zoomIdentity.translate(0, 0).scale(1)
+        )
+        return
+      }
+      
       // Calculate bounding box of all nodes
-      const padding = 50
-      const minX = Math.min(...filteredData.nodes.map(d => d.x!)) - padding
-      const maxX = Math.max(...filteredData.nodes.map(d => d.x!)) + padding
-      const minY = Math.min(...filteredData.nodes.map(d => d.y!)) - padding
-      const maxY = Math.max(...filteredData.nodes.map(d => d.y!)) + padding
+      const padding = 100
+      const minX = Math.min(...nodesWithCoords.map(d => d.x!)) - padding
+      const maxX = Math.max(...nodesWithCoords.map(d => d.x!)) + padding
+      const minY = Math.min(...nodesWithCoords.map(d => d.y!)) - padding
+      const maxY = Math.max(...nodesWithCoords.map(d => d.y!)) + padding
 
       const dataWidth = maxX - minX
       const dataHeight = maxY - minY
 
       // Calculate scale to fit all data
-      const scale = Math.min(width / dataWidth, height / dataHeight) * 0.9
+      const scale = Math.min(width / dataWidth, height / dataHeight) * 0.8
 
       // Calculate translation to center the data
       const translateX = (width - dataWidth * scale) / 2 - minX * scale
@@ -879,7 +847,7 @@ const NetworkView: React.FC = () => {
   }
 
   // Get unique values for filters with common defaults
-  const baseProtocols = ['TCP', 'UDP', 'ICMP', 'Proto-255'] // Common protocols to always show
+  const baseProtocols = ['TCP', 'UDP', 'ICMP', 'Proto-255', 'Proto-0'] // Added Proto-0 to base protocols
   const baseTrafficTypes = ['virtual', 'subnet', 'physical'] // All possible traffic types
   const baseIpCategories = ['tailscale', 'private', 'public'] // Common IP categories
 
@@ -991,7 +959,7 @@ const NetworkView: React.FC = () => {
         timeRange: timeRangeFilter
       }}
       onResetZoom={resetZoom}
-      onClearSelection={(selectedNode || selectedLink) ? clearSelection : undefined}
+      onClearSelection={resetAllFilters}
       showNetworkActions={true}
     >
       <div className="flex h-full overflow-hidden">
@@ -1061,7 +1029,6 @@ const NetworkView: React.FC = () => {
                     onChange={(e) => setTimeRangeFilter(e.target.value)}
                     className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   >
-                    <option value="all">All Time</option>
                     <option value="5m">Last 5 Minutes</option>
                     <option value="15m">Last 15 Minutes</option>
                     <option value="30m">Last 30 Minutes</option>
@@ -1292,7 +1259,7 @@ const NetworkView: React.FC = () => {
                 <div>Showing {filteredData.links.length} of {links.length} flows</div>
                 <div>Time: {useCustomTimeRange && startDate && endDate ? 
                   `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}` :
-                  timeRangeFilter === 'all' ? 'All time' : timeRangeFilter}</div>
+                  timeRangeFilter}</div>
                 <div>Bandwidth: {formatBytes(minBandwidth)} - {formatBytes(maxBandwidth)}</div>
                 {nodeCountFilter > 0 && <div>Min connections: {nodeCountFilter}</div>}
               </div>

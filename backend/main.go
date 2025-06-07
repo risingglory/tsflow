@@ -39,7 +39,11 @@ func main() {
 
 	// CORS middleware
 	corsConfig := cors.DefaultConfig()
-	corsConfig.AllowOrigins = []string{"http://localhost:3000", "http://localhost:5173"} // Vite dev server ports
+	if cfg.Environment == "production" {
+		corsConfig.AllowAllOrigins = true // Allow all origins in production since backend serves frontend
+	} else {
+		corsConfig.AllowOrigins = []string{"http://localhost:3000", "http://localhost:5173"} // Vite dev server ports
+	}
 	corsConfig.AllowCredentials = true
 	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	corsConfig.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
@@ -65,6 +69,8 @@ func main() {
 		distPath = "../frontend/dist" // Development path
 	}
 
+	log.Printf("Serving static files from: %s", distPath)
+
 	// Serve all static assets (CSS, JS, images, etc.)
 	router.Static("/assets", distPath+"/assets")
 	router.StaticFile("/favicon.svg", distPath+"/favicon.svg")
@@ -72,6 +78,7 @@ func main() {
 	// Serve index.html for root and all unmatched routes (client-side routing)
 	router.StaticFile("/", distPath+"/index.html")
 	router.NoRoute(func(c *gin.Context) {
+		log.Printf("Serving SPA route for: %s", c.Request.URL.Path)
 		c.File(distPath + "/index.html")
 	})
 
@@ -85,7 +92,7 @@ func main() {
 	log.Printf("Tailnet: %s", cfg.TailscaleTailnet)
 	log.Printf("Environment: %s", cfg.Environment)
 
-	if err := router.Run(":" + port); err != nil {
+	if err := router.Run("0.0.0.0:" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }

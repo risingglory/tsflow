@@ -150,7 +150,7 @@ export const fetcher = async (url: string) => {
       const deviceId = url.split('/')[2] // Extract device ID from URL like /devices/123/flows
       return await tailscaleAPI.getDeviceFlows(deviceId)
     }
-
+    
     throw new Error(`Unknown API endpoint: ${url}`)
   } catch (error: unknown) {
     // Re-throw with better context

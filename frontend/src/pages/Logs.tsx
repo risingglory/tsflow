@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Search, Download, Calendar, RefreshCw } from 'lucide-react'
+import { Search, Download, Calendar, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react'
 import useSWR from 'swr'
 import Layout from '@/components/Layout'
 import { fetcher } from '@/lib/api'
@@ -51,6 +51,10 @@ export default function Logs() {
   const [trafficTypeFilter, setTrafficTypeFilter] = useState<string>('all')
   const [selectedEntry, setSelectedEntry] = useState<LogEntry | null>(null)
   
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(50)
+  
   // Custom time range states
   const [useCustomTimeRange, setUseCustomTimeRange] = useState(false)
   const [startDate, setStartDate] = useState('')
@@ -78,7 +82,7 @@ export default function Logs() {
   const { data: networkLogsData, mutate: refetchNetworkLogs } = useSWR(networkLogsApiUrl, fetcher, {
     errorRetryCount: 2,
     revalidateOnFocus: false,
-    refreshInterval: 30000
+    refreshInterval: 120000
   })
 
   const networkLogs = (Array.isArray(networkLogsData) && networkLogsData.length > 0 && 'logged' in networkLogsData[0]) ? networkLogsData : []
@@ -162,6 +166,17 @@ export default function Logs() {
     })
   }, [flattenedEntries, searchQuery, protocolFilter, trafficTypeFilter])
 
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, protocolFilter, trafficTypeFilter, useCustomTimeRange, startDate, endDate])
+
+  // Calculate pagination values
+  const totalPages = Math.ceil(filteredEntries.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const currentEntries = filteredEntries.slice(startIndex, endIndex)
+
   // Get unique protocols and traffic types for filters
   const uniqueProtocols = Array.from(new Set(flattenedEntries.map(e => getProtocolName(e.traffic.proto))))
   const uniqueTrafficTypes = Array.from(new Set(flattenedEntries.map(e => e.traffic.type)))
@@ -193,24 +208,19 @@ export default function Logs() {
   return (
     <Layout>
       <div className="flex flex-col h-full overflow-hidden">
-        {/* Unified Header */}
+        {/* Stats Header */}
         <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 flex-shrink-0">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Logs</h2>
-              <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
-                <span>{filteredEntries.length.toLocaleString()} of {flattenedEntries.length.toLocaleString()} flows</span>
-                <span>•</span>
-                <span>{networkLogs.length.toLocaleString()} entries</span>
-                <span>•</span>
-                <span>{uniqueProtocols.length} protocols</span>
-                {useCustomTimeRange && startDate && endDate && (
-                  <>
-                    <span>•</span>
-                    <span>{new Date(startDate).toLocaleDateString()} - {new Date(endDate).toLocaleDateString()}</span>
-                  </>
-                )}
-              </div>
+            <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
+              <span>{filteredEntries.length.toLocaleString()} flows from {networkLogs.length.toLocaleString()} log entries</span>
+              <span>•</span>
+              <span>{uniqueProtocols.length} protocols</span>
+              <span>•</span>
+              <span>Page {currentPage} of {totalPages}</span>
+              <span>•</span>
+              <span>{useCustomTimeRange && startDate && endDate ? 
+                `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}` :
+                'Last 5 minutes'}</span>
             </div>
             <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
               <Calendar className="w-4 h-4" />
@@ -324,6 +334,25 @@ export default function Logs() {
                 </select>
               </div>
 
+              {/* Items per page */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Items per page</label>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value))
+                    setCurrentPage(1) // Reset to first page
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                >
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={200}>200</option>
+                  <option value={500}>500</option>
+                </select>
+              </div>
+
               {/* Export */}
               <button
                 onClick={exportLogs}
@@ -337,12 +366,13 @@ export default function Logs() {
               <div className="mt-6 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
                 <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Summary</h4>
                 <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
-                  <div>Total Entries: {flattenedEntries.length.toLocaleString()}</div>
+                  <div>Total Flows: {flattenedEntries.length.toLocaleString()}</div>
                   <div>Filtered: {filteredEntries.length.toLocaleString()}</div>
-                  <div>Network Log Entries: {networkLogs.length.toLocaleString()}</div>
-                  {useCustomTimeRange && startDate && endDate && (
-                    <div>Time Range: {new Date(startDate).toLocaleDateString()} - {new Date(endDate).toLocaleDateString()}</div>
-                  )}
+                  <div>Showing: {Math.min(itemsPerPage, filteredEntries.length - startIndex)} of {filteredEntries.length.toLocaleString()}</div>
+                  <div>Log Entries: {networkLogs.length.toLocaleString()}</div>
+                  <div>Time Range: {useCustomTimeRange && startDate && endDate ? 
+                    `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}` :
+                    'Last 5 minutes'}</div>
                 </div>
               </div>
             </div>
@@ -350,6 +380,59 @@ export default function Logs() {
 
           {/* Main Content */}
           <div className="flex-1 flex flex-col min-w-0">
+            {/* Pagination Controls - Top */}
+            <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Showing {startIndex + 1} to {Math.min(endIndex, filteredEntries.length)} of {filteredEntries.length.toLocaleString()} flows
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    className="p-2 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <div className="flex items-center space-x-1">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum
+                      if (totalPages <= 5) {
+                        pageNum = i + 1
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i
+                      } else {
+                        pageNum = currentPage - 2 + i
+                      }
+                      
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setCurrentPage(pageNum)}
+                          className={`px-3 py-1 rounded-md text-sm transition-colors ${
+                            currentPage === pageNum
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <button
+                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages}
+                    className="p-2 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {/* Logs Table */}
             <div className="flex-1 overflow-auto">
               <table className="w-full">
@@ -366,7 +449,7 @@ export default function Logs() {
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                  {filteredEntries.length === 0 ? (
+                  {currentEntries.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-6 py-12 text-center">
                         <div className="text-gray-500 dark:text-gray-400">
@@ -380,7 +463,7 @@ export default function Logs() {
                       </td>
                     </tr>
                   ) : (
-                    filteredEntries.map((entry) => (
+                    currentEntries.map((entry) => (
                     <tr
                       key={entry.index}
                       className="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors"
@@ -424,6 +507,45 @@ export default function Logs() {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Pagination Controls - Bottom */}
+            <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-6 py-3 flex-shrink-0">
+              <div className="flex items-center justify-center">
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 rounded-md text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    First
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    className="p-2 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages}
+                    className="p-2 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 rounded-md text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Last
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 

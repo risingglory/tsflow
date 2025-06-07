@@ -161,7 +161,7 @@ export default function Layout({ children, networkStats, onResetZoom, onClearSel
                     onClick={onClearSelection}
                     className="px-3 py-2 text-sm bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500"
                   >
-                    Clear Selection
+                    Reset All Filters
                   </button>
                 </>
               )}
