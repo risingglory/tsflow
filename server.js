@@ -18,8 +18,8 @@ app.use(express.json());
 // Proxy endpoint for Tailscale API
 app.use('/api/v2', async (req, res) => {
   try {
-    const apiKey = process.env.TAILSCALE_ACCESS_TOKEN;
-    const tailnet = process.env.TAILSCALE_TAILNET;
+    const apiKey = process.env.VITE_TAILSCALE_API_KEY;
+    const tailnet = process.env.VITE_TAILSCALE_TAILNET;
     
     if (!apiKey || !tailnet) {
       return res.status(500).json({ 

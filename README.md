@@ -43,15 +43,31 @@ A modern, real-time web application for visualizing and analyzing network traffi
 ## Quick Start
 
 ### Prerequisites
-- Node.js 18+ and npm 8+
 - Tailscale API key with appropriate permissions
 - Access to a Tailscale network
+- Docker (recommended) or Node.js 18+ and npm 8+
 
-### Installation
+### Option 1: Using Docker (Recommended)
+
+The fastest way to get started is using the pre-built Docker image:
+
+```bash
+docker run -d \
+  -p 3000:3000 \
+  -p 3001:3001 \
+  -e VITE_TAILSCALE_API_KEY=your-api-key \
+  -e VITE_TAILSCALE_TAILNET=your-tailnet \
+  --name tsflow \
+  ghcr.io/rajsinghtech/tsflow:latest
+```
+
+Then navigate to `http://localhost:3000` to start exploring your network!
+
+### Option 2: Development Setup
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/your-username/tsflow.git
+   git clone https://github.com/rajsinghtech/tsflow.git
    cd tsflow
    ```
 
@@ -67,8 +83,8 @@ A modern, real-time web application for visualizing and analyzing network traffi
    
    Edit `.env` and add your Tailscale credentials:
    ```env
-   TAILSCALE_ACCESS_TOKEN=tskey-client-your-api-key-here
-   TAILSCALE_TAILNET=your-tailnet-name
+   VITE_TAILSCALE_API_KEY=tskey-client-your-api-key-here
+   VITE_TAILSCALE_TAILNET=your-tailnet-name
    ```
 
 4. **Start the application**
@@ -86,10 +102,48 @@ A modern, real-time web application for visualizing and analyzing network traffi
 
 ## Docker Deployment
 
-### Using Docker Compose (Recommended)
+### Using Pre-built Images (Recommended)
+
+Pre-built container images are automatically built and published to GitHub Container Registry:
 
 ```bash
-# Build and start
+# Pull and run the latest image
+docker run -d \
+  -p 3000:3000 \
+  -p 3001:3001 \
+  -e VITE_TAILSCALE_API_KEY=your-api-key \
+  -e VITE_TAILSCALE_TAILNET=your-tailnet \
+  --name tsflow \
+  ghcr.io/rajsinghtech/tsflow:latest
+```
+
+**Available tags:**
+- `latest` - Latest stable release from main branch
+- `<commit-sha>` - Specific commit builds
+- `<version>` - Tagged releases (when available)
+
+### Using Docker Compose (Recommended)
+
+Create a `docker-compose.yml` file:
+
+```yaml
+version: '3.8'
+services:
+  tsflow:
+    image: ghcr.io/rajsinghtech/tsflow:latest
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    environment:
+      - VITE_TAILSCALE_API_KEY=your-api-key
+      - VITE_TAILSCALE_TAILNET=your-tailnet
+    restart: unless-stopped
+```
+
+Then start the application:
+
+```bash
+# Start the application
 docker-compose up -d
 
 # View logs
@@ -99,7 +153,9 @@ docker-compose logs -f
 docker-compose down
 ```
 
-### Using Docker directly
+### Building from Source
+
+If you prefer to build the image yourself:
 
 ```bash
 # Build image
@@ -109,8 +165,8 @@ docker build -t tsflow .
 docker run -d \
   -p 3000:3000 \
   -p 3001:3001 \
-  -e TAILSCALE_ACCESS_TOKEN=your-api-key \
-  -e TAILSCALE_TAILNET=your-tailnet \
+  -e VITE_TAILSCALE_API_KEY=your-api-key \
+  -e VITE_TAILSCALE_TAILNET=your-tailnet \
   --name tsflow \
   tsflow
 ```
@@ -136,9 +192,9 @@ npm run preview
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `TAILSCALE_ACCESS_TOKEN` | Your Tailscale API key | Required |
-| `TAILSCALE_TAILNET` | Your tailnet name | Required |
-| `PROXY_TAILSCALE_BASE_URL` | API base URL | `http://localhost:3001/api/v2` |
+| `VITE_TAILSCALE_API_KEY` | Your Tailscale API key | Required |
+| `VITE_TAILSCALE_TAILNET` | Your tailnet name | Required |
+| `VITE_TAILSCALE_BASE_URL` | API base URL | `http://localhost:3001/api/v2` |
 
 ## Usage
 
