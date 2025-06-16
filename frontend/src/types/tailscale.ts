@@ -200,6 +200,17 @@ export const COMMON_PORTS: Record<number, string> = {
   53: 'DNS',
   80: 'HTTP',
   443: 'HTTPS',
+  993: 'IMAPS',
+  995: 'POP3S',
+  587: 'SMTP',
+  25: 'SMTP',
+  110: 'POP3',
+  143: 'IMAP',
+  21: 'FTP',
+  23: 'Telnet',
   3389: 'RDP',
-  5901: 'VNC'
+  5432: 'PostgreSQL',
+  3306: 'MySQL',
+  6379: 'Redis',
+  27017: 'MongoDB'
 } 
