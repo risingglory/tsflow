@@ -2,18 +2,6 @@
 
 A modern, real-time web application for visualizing and analyzing network traffic flows within Tailscale networks.
 
-## Architecture Overview
-
-TSFlow uses a **Go backend + React frontend** architecture for optimal performance and security:
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌──────────────────┐
-│   React App     │    │   Go Backend    │    │   Tailscale API  │
-│   (Frontend)    │◄──►│   (Gin Server)  │◄──►│  api.tailscale.  │
-│                 │    │                 │    │       com        │
-└─────────────────┘    └─────────────────┘    └──────────────────┘
-```
-
 ## Features
 
 **Network Topology Visualization**
@@ -53,29 +41,11 @@ TSFlow uses a **Go backend + React frontend** architecture for optimal performan
 
 ### Prerequisites
 - Tailscale API key with appropriate permissions
-- Docker (recommended) or Go 1.21+ and Node.js 18+
+- Docker
 
-### Using Docker Compose
+### Run with Docker
 
-```bash
-# Create environment file
-cp env.example .env
-# Edit .env with your Tailscale credentials
-
-# Run with Docker Compose
-docker-compose up -d
-
-# View logs
-docker-compose logs -f tsflow
-```
-
-Navigate to `http://localhost:8080` to access the dashboard.
-
-## Deployment Options
-
-### Docker Deployment
-
-#### Using Pre-built Images
+The fastest way to get started using pre-built images:
 
 ```bash
 docker run -d \
@@ -88,12 +58,42 @@ docker run -d \
   ghcr.io/rajsinghtech/tsflow:latest
 ```
 
+## Architecture Overview
+
+TSFlow uses a **Go backend + React frontend** architecture for optimal performance and security:
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌──────────────────┐
+│   React App     │    │   Go Backend    │    │   Tailscale API  │
+│   (Frontend)    │◄──►│   (Gin Server)  │◄──►│  api.tailscale.  │
+│                 │    │                 │    │       com        │
+└─────────────────┘    └─────────────────┘    └──────────────────┘
+```
+
+Navigate to `http://localhost:8080` to access the dashboard.
+
 **Available image tags:**
 - `latest` - Latest stable release from main branch
 - `<version>` - Tagged releases (e.g., `v1.0.0`)
 - `<commit-sha>` - Specific commit builds
 
-#### Using Docker Compose
+## Deployment Options
+
+### Using Docker Compose
+
+For more complex setups or persistent configuration:
+
+```bash
+# Create environment file
+cp env.example .env
+# Edit .env with your Tailscale credentials
+
+# Run with Docker Compose
+docker-compose up -d
+
+# View logs
+docker-compose logs -f tsflow
+```
 
 Create a `docker-compose.yml` file:
 
@@ -252,43 +252,6 @@ For developers who want to build and run TSFlow locally:
 | `PORT` | Backend server port | No | `8080` |
 | `ENVIRONMENT` | Runtime environment | No | `development` |
 
-## Project Structure
-
-```
-tsflow/
-├── backend/                    # Go backend server
-│   ├── main.go                # Main server entry point
-│   ├── go.mod                 # Go module definition
-│   ├── internal/              # Internal packages
-│   │   ├── config/           # Configuration management
-│   │   ├── handlers/         # HTTP request handlers
-│   │   └── services/         # Business logic services
-│   └── README.md             # Backend documentation
-├── frontend/                  # React frontend application
-│   ├── src/                  # Source code
-│   │   ├── components/       # Reusable UI components
-│   │   ├── pages/           # Page components
-│   │   ├── lib/             # Utilities and API client
-│   │   └── types/           # TypeScript definitions
-│   ├── package.json         # Frontend dependencies
-│   └── dist/               # Built frontend (after build)
-├── docker-compose.yml        # Docker Compose configuration
-├── Dockerfile               # Multi-stage Docker build
-├── .env                    # Environment variables
-└── README.md              # This file
-```
-
-## API Endpoints
-
-The Go backend exposes the following REST API endpoints:
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check endpoint |
-| `/api/devices` | GET | List all Tailscale devices |
-| `/api/network-logs` | GET | Fetch network logs with time range |
-| `/api/network-map` | GET | Get network topology data |
-
 **Example API calls:**
 ```bash
 # Health check
@@ -300,41 +263,6 @@ curl http://localhost:8080/api/devices
 # Get network logs (last 10 minutes)
 curl "http://localhost:8080/api/network-logs?start=2024-12-19T10:00:00Z&end=2024-12-19T10:10:00Z"
 ```
-
-## Troubleshooting
-
-### No Network Logs Showing
-
-1. **Enable logging**: Network logging must be enabled in [Tailscale admin console](https://login.tailscale.com/admin/logs)
-2. **Check permissions**: API key needs `logs:read` permission
-3. **Recent activity**: Try a shorter time range - logs may only be available for recent activity
-4. **Backend logs**: Check `docker-compose logs tsflow` for error messages
-
-### API Connection Issues
-
-1. **Check credentials**: Verify API key and tailnet name in `.env` file
-2. **Test backend directly**: 
-   ```bash
-   curl -H "Authorization: Bearer your-api-key" \
-        "https://api.tailscale.com/api/v2/tailnet/your-tailnet/devices"
-   ```
-3. **Backend health**: Ensure backend is running: `curl http://localhost:8080/health`
-4. **Environment variables**: Verify `.env` file is properly loaded
-
-### Docker Issues
-
-1. **Environment file**: Ensure `.env` file exists and contains correct values
-2. **Port conflicts**: Make sure port 8080 is available
-3. **Build cache**: Try `docker-compose build --no-cache` for clean rebuild
-4. **Container logs**: Check `docker-compose logs tsflow` for detailed error messages
-
-### Development Issues
-
-1. **Go dependencies**: Run `go mod download` in backend directory
-2. **Frontend build**: Run `npm run build` in frontend directory
-3. **Port conflicts**: Backend runs on 8080, ensure it's available
-4. **API connectivity**: Backend must be able to reach api.tailscale.com
-
 
 ---
 
