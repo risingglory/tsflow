@@ -38,6 +38,7 @@ A modern, real-time web application for visualizing and analyzing network traffi
 - SWR for efficient data fetching and caching
 
 ## Quick Start
+> **Important:** TSFlow requires the **Tailscale Network Flow Logs** feature, which is available on **Premium** and **Enterprise** plans. The application will not show any flow data on other plans.
 
 ### Prerequisites
 - Tailscale API key with appropriate permissions
@@ -240,7 +241,7 @@ For developers who want to build and run TSFlow locally:
 1. Go to the [Tailscale Admin Console](https://login.tailscale.com/admin/settings/keys)
 2. Create a new API key with the following permissions:
    - `devices:read` - To fetch device information
-   - `logs:read` - To access network flow logs
+   - `logs:read` - To access network flow logs. **Note**: This requires a **Premium** or **Enterprise** plan.
 3. Copy the API key to your `.env` file
 
 ### Environment Variables
