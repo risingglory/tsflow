@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Search, Download, Calendar, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react'
 import useSWR from 'swr'
 import Layout from '@/components/Layout'
-import { fetcher } from '@/lib/api'
+import { fetcher, formatBytes } from '@/lib/api'
 
 interface TrafficEntry {
   proto: number
@@ -34,14 +34,6 @@ const getProtocolName = (proto: number): string => {
     case 255: return 'Reserved'
     default: return `Proto-${proto}`
   }
-}
-
-const formatBytes = (bytes: number) => {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
 
 export default function Logs() {
@@ -416,6 +408,7 @@ export default function Logs() {
                   <div>Filtered: {filteredEntries.length.toLocaleString()}</div>
                   <div>Showing: {Math.min(itemsPerPage, filteredEntries.length - startIndex)} of {filteredEntries.length.toLocaleString()}</div>
                   <div>Log Entries: {networkLogs.length.toLocaleString()}</div>
+                  <div>Data Size: {formatBytes(JSON.stringify(networkLogs).length)}</div>
                   <div>Time Range: {useCustomTimeRange && startDate && endDate ? 
                     `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}` :
                     timeRangeFilter}</div>

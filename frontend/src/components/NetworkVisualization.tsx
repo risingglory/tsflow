@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { TailscaleDevice, NetworkFlowLog } from '@/types/tailscale'
+import { formatBytes } from '@/lib/api'
 
 interface NetworkVisualizationProps {
   devices?: TailscaleDevice[]
@@ -52,6 +53,8 @@ export default function NetworkVisualization({
 
   }, [devices, logs, zoom])
 
+  const dataSizeBytes = logs ? JSON.stringify(logs).length : 0
+
   return (
     <div className="h-full w-full bg-gray-50 relative">
       {!devices || devices.length === 0 ? (
@@ -76,6 +79,7 @@ export default function NetworkVisualization({
       <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-2 text-xs text-gray-600">
         <div>Devices: {devices?.length || 0}</div>
         <div>Connections: {logs?.length || 0}</div>
+        <div>Data Size: {formatBytes(dataSizeBytes)}</div>
         <div>Zoom: {Math.round(zoom * 100)}%</div>
         {isPlaying && <div className="text-green-600">Playing</div>}
       </div>

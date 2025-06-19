@@ -63,7 +63,7 @@ func NewTailscaleService(apiKey, tailnet string) *TailscaleService {
 		apiKey:  apiKey,
 		tailnet: tailnet,
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 2 * time.Minute,
 		},
 	}
 }
