@@ -25,17 +25,15 @@ Navigate to `http://localhost:8080` to access the dashboard.
 
 ## Configuration
 
-### Tailscale API Setup
+### Tailscale Network Logs
 
-1. Go to the [Logs tab](https://login.tailscale.com/admin/logs) in your Tailscale Admin Console and ensure that Network Flow Logs are **enabled**.
-2. Go to the [API keys page](https://login.tailscale.com/admin/settings/keys) and create a new API key. **Note**: This requires a **Premium** or **Enterprise** plan.
-3. Use this API key in your deployment configuration.
+Go to the [Logs tab](https://login.tailscale.com/admin/logs) in your Tailscale Admin Console and ensure that Network Flow Logs are **enabled**. **Note**: This requires a **Premium** or **Enterprise** plan.
 
 ### Finding Your Tailscale Credentials
 
 #### API Key
 1. Go to the [API keys page](https://login.tailscale.com/admin/settings/keys) in your Tailscale Admin Console
-2. Create a new API key with device read permissions
+2. Create a new API key
 3. Copy the generated API key (starts with `tskey-api-`)
 
 #### Organization Name
