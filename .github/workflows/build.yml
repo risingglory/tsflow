@@ -189,7 +189,6 @@ jobs:
         cp -r frontend/dist tsflow-${{ github.ref_name }}/
         cp -r dist/* tsflow-${{ github.ref_name }}/
         cp docker-compose.yml tsflow-${{ github.ref_name }}/
-        cp env.example tsflow-${{ github.ref_name }}/
         cp README.md tsflow-${{ github.ref_name }}/
         
         tar -czf release/tsflow-${{ github.ref_name }}.tar.gz tsflow-${{ github.ref_name }}/
@@ -218,14 +217,12 @@ jobs:
           
           **Quick Start:**
           ```bash
-          # Create environment file
-          curl -o .env https://raw.githubusercontent.com/${{ github.repository }}/main/env.example
-          # Edit .env with your Tailscale credentials
-          
           # Run with Docker
           docker run -d \
             -p 8080:8080 \
-            --env-file .env \
+            -e TAILSCALE_API_KEY=your-api-key \
+            -e TAILSCALE_TAILNET=your-tailnet \
+            -e ENVIRONMENT=production \
             --name tsflow \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:${{ github.ref_name }}
           ```
@@ -237,9 +234,7 @@ jobs:
           tar -xzf tsflow-${{ github.ref_name }}.tar.gz
           cd tsflow-${{ github.ref_name }}
           
-          # Configure environment
-          cp env.example .env
-          # Edit .env with your credentials
+          # Edit docker-compose.yml with your credentials
           
           # Run with Docker Compose
           docker-compose up -d

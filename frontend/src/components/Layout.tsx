@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Network, Home, Settings, Menu, X, ZoomOut, FileText } from 'lucide-react'
+import { Network, Home, Menu, X, ZoomOut, FileText } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { clsx } from 'clsx'
 
@@ -23,7 +23,6 @@ export default function Layout({ children, networkStats, onResetZoom, onClearSel
     { name: 'Dashboard', href: '/', icon: Home },
     { name: 'Network View', href: '/network', icon: Network },
     { name: 'Logs', href: '/logs', icon: FileText },
-    { name: 'Settings', href: '/settings', icon: Settings },
   ]
 
   const isCurrentPath = (path: string) => {
@@ -74,7 +73,6 @@ export default function Layout({ children, networkStats, onResetZoom, onClearSel
               </div>
               <div className="flex flex-col">
                 <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">TSFlow</h1>
-                <p className="text-xs text-gray-500 dark:text-gray-400">v2.0.0</p>
               </div>
             </div>
             <button

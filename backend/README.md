@@ -19,8 +19,8 @@ A Go-based backend server that provides a REST API for interacting with the Tail
 
 1. **Set up environment variables**:
    ```bash
-   cp ../env.example ../.env
-   # Edit .env with your Tailscale credentials
+   export TAILSCALE_API_KEY=your-api-key
+   export TAILSCALE_TAILNET=your-tailnet
    ```
 
 2. **Run in development mode**:
@@ -41,7 +41,6 @@ A Go-based backend server that provides a REST API for interacting with the Tail
 | `TAILSCALE_API_KEY` | Yes | - | Your Tailscale API key |
 | `TAILSCALE_TAILNET` | Yes | - | Your tailnet name |
 | `PORT` | No | `8080` | Server port |
-| `ENVIRONMENT` | No | `development` | Environment (development/production) |
 
 ## API Endpoints
 

@@ -3,7 +3,6 @@ import { SWRConfig } from 'swr'
 import { ThemeProvider } from '@/contexts/ThemeContext'
 import Dashboard from '@/pages/Dashboard'
 import NetworkView from '@/pages/NetworkView'
-import Settings from '@/pages/Settings'
 import Logs from './pages/Logs'
 import { fetcher } from '@/lib/api'
 
@@ -22,7 +21,6 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/network" element={<NetworkView />} />
           <Route path="/logs" element={<Logs />} />
-          <Route path="/settings" element={<Settings />} />
         </Routes>
       </SWRConfig>
     </ThemeProvider>
