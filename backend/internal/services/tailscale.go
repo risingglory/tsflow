@@ -17,6 +17,7 @@ type TailscaleService struct {
 	apiKey      string
 	oauthConfig *clientcredentials.Config
 	tailnet     string
+	baseURL     string
 	client      *http.Client
 	useOAuth    bool
 }
@@ -67,6 +68,7 @@ type NetworkLogsResponse struct {
 func NewTailscaleService(cfg *config.Config) *TailscaleService {
 	ts := &TailscaleService{
 		tailnet: cfg.TailscaleTailnet,
+		baseURL: cfg.TailscaleAPIURL,
 	}
 
 	// Prioritize OAuth if configured, fallback to API key
@@ -75,7 +77,7 @@ func NewTailscaleService(cfg *config.Config) *TailscaleService {
 			ClientID:     cfg.TailscaleOAuthClientID,
 			ClientSecret: cfg.TailscaleOAuthClientSecret,
 			Scopes:       cfg.TailscaleOAuthScopes,
-			TokenURL:     "https://api.tailscale.com/api/v2/oauth/token",
+			TokenURL:     cfg.TailscaleAPIURL + "/api/v2/oauth/token",
 		}
 		ts.client = ts.oauthConfig.Client(context.Background())
 		ts.client.Timeout = 2 * time.Minute
@@ -93,7 +95,7 @@ func NewTailscaleService(cfg *config.Config) *TailscaleService {
 
 // makeRequest makes an authenticated request to the Tailscale API
 func (ts *TailscaleService) makeRequest(endpoint string) ([]byte, error) {
-	url := fmt.Sprintf("https://api.tailscale.com/api/v2%s", endpoint)
+	url := fmt.Sprintf("%s/api/v2%s", ts.baseURL, endpoint)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {

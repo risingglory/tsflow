@@ -11,6 +11,7 @@ import (
 type Config struct {
 	TailscaleAPIKey            string
 	TailscaleTailnet           string
+	TailscaleAPIURL            string
 	TailscaleOAuthClientID     string
 	TailscaleOAuthClientSecret string
 	TailscaleOAuthScopes       []string
@@ -23,6 +24,7 @@ func Load() *Config {
 	return &Config{
 		TailscaleAPIKey:            os.Getenv("TAILSCALE_API_KEY"),
 		TailscaleTailnet:           os.Getenv("TAILSCALE_TAILNET"),
+		TailscaleAPIURL:            getEnvWithDefault("TAILSCALE_API_URL", "https://api.tailscale.com"),
 		TailscaleOAuthClientID:     os.Getenv("TAILSCALE_OAUTH_CLIENT_ID"),
 		TailscaleOAuthClientSecret: os.Getenv("TAILSCALE_OAUTH_CLIENT_SECRET"),
 		TailscaleOAuthScopes:       parseScopes(os.Getenv("TAILSCALE_OAUTH_SCOPES")),

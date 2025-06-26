@@ -76,6 +76,7 @@ func main() {
 
 	log.Printf("Starting TSFlow server on port %s", port)
 	log.Printf("Tailnet: %s", cfg.TailscaleTailnet)
+	log.Printf("API URL: %s", cfg.TailscaleAPIURL)
 	log.Printf("Environment: %s", cfg.Environment)
 	
 	// Log authentication method being used

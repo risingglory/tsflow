@@ -71,11 +71,19 @@ OAuth provides better security through automatic token refresh and fine-grained 
 2. Your organization name is displayed in the Organization section (used by the Tailscale API)
 3. Use this exact organization name for the `TAILSCALE_TAILNET` variable
 
+#### API URL (Optional)
+For most users, the default API URL works fine. However, some users may need to use region-specific endpoints:
+- Default: `https://api.tailscale.com`
+- US-specific: `https://api.us.tailscale.com`
+
+Set `TAILSCALE_API_URL=https://api.us.tailscale.com` if you need the US-specific endpoint.
+
 ### Environment Variables
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
 | `TAILSCALE_TAILNET` | Your organization name | Yes | - |
+| `TAILSCALE_API_URL` | Tailscale API endpoint URL | No | `https://api.tailscale.com` |
 | **OAuth Method** |
 | `TAILSCALE_OAUTH_CLIENT_ID` | OAuth client ID | Yes* | - |
 | `TAILSCALE_OAUTH_CLIENT_SECRET` | OAuth client secret | Yes* | - |
