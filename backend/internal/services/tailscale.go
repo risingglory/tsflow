@@ -1,18 +1,24 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/rajsinghtech/tsflow/backend/internal/config"
+	"golang.org/x/oauth2/clientcredentials"
 )
 
 // TailscaleService handles interactions with the Tailscale API
 type TailscaleService struct {
-	apiKey  string
-	tailnet string
-	client  *http.Client
+	apiKey      string
+	oauthConfig *clientcredentials.Config
+	tailnet     string
+	client      *http.Client
+	useOAuth    bool
 }
 
 // Device represents a Tailscale device
@@ -58,14 +64,31 @@ type NetworkLogsResponse struct {
 }
 
 // NewTailscaleService creates a new Tailscale service
-func NewTailscaleService(apiKey, tailnet string) *TailscaleService {
-	return &TailscaleService{
-		apiKey:  apiKey,
-		tailnet: tailnet,
-		client: &http.Client{
-			Timeout: 2 * time.Minute,
-		},
+func NewTailscaleService(cfg *config.Config) *TailscaleService {
+	ts := &TailscaleService{
+		tailnet: cfg.TailscaleTailnet,
 	}
+
+	// Prioritize OAuth if configured, fallback to API key
+	if cfg.TailscaleOAuthClientID != "" && cfg.TailscaleOAuthClientSecret != "" {
+		ts.oauthConfig = &clientcredentials.Config{
+			ClientID:     cfg.TailscaleOAuthClientID,
+			ClientSecret: cfg.TailscaleOAuthClientSecret,
+			Scopes:       cfg.TailscaleOAuthScopes,
+			TokenURL:     "https://api.tailscale.com/api/v2/oauth/token",
+		}
+		ts.client = ts.oauthConfig.Client(context.Background())
+		ts.client.Timeout = 2 * time.Minute
+		ts.useOAuth = true
+	} else if cfg.TailscaleAPIKey != "" {
+		ts.apiKey = cfg.TailscaleAPIKey
+		ts.client = &http.Client{
+			Timeout: 2 * time.Minute,
+		}
+		ts.useOAuth = false
+	}
+
+	return ts
 }
 
 // makeRequest makes an authenticated request to the Tailscale API
@@ -77,7 +100,11 @@ func (ts *TailscaleService) makeRequest(endpoint string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+ts.apiKey)
+	// OAuth client handles authentication automatically via HTTP client
+	// For API key authentication, set Authorization header manually
+	if !ts.useOAuth && ts.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+ts.apiKey)
+	}
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := ts.client.Do(req)

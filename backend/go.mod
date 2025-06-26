@@ -1,11 +1,14 @@
 module github.com/rajsinghtech/tsflow/backend
 
-go 1.21
+go 1.23.0
+
+toolchain go1.24.4
 
 require (
 	github.com/gin-contrib/cors v1.4.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/joho/godotenv v1.4.0
+	golang.org/x/oauth2 v0.30.0
 )
 
 require (

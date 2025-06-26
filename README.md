@@ -10,6 +10,20 @@ A modern, real-time web application for visualizing and analyzing network traffi
 
 The fastest way to get started using pre-built images:
 
+**Using OAuth (Recommended):**
+```bash
+docker run -d \
+  --name tsflow \
+  -p 8080:8080 \
+  -e TAILSCALE_OAUTH_CLIENT_ID=your-client-id \
+  -e TAILSCALE_OAUTH_CLIENT_SECRET=your-client-secret \
+  -e TAILSCALE_TAILNET=your-organization \
+  -e ENVIRONMENT=production \
+  --restart unless-stopped \
+  ghcr.io/rajsinghtech/tsflow:latest
+```
+
+**Using API Key:**
 ```bash
 docker run -d \
   --name tsflow \
@@ -29,12 +43,28 @@ Navigate to `http://localhost:8080` to access the dashboard.
 
 Go to the [Logs tab](https://login.tailscale.com/admin/logs) in your Tailscale Admin Console and ensure that Network Flow Logs are **enabled**. **Note**: This requires a **Premium** or **Enterprise** plan.
 
-### Finding Your Tailscale Credentials
+### Authentication Methods
 
-#### API Key
+TSFlow supports two authentication methods with Tailscale. You only need to configure one method.
+
+#### Method 1: OAuth Client Credentials (Recommended)
+
+OAuth provides better security through automatic token refresh and fine-grained permissions.
+
+1. Go to the [OAuth clients page](https://login.tailscale.com/admin/settings/oauth) in your Tailscale Admin Console
+2. Create a new OAuth client
+3. Copy the Client ID and Client Secret
+4. Set the following environment variables:
+   - `TAILSCALE_OAUTH_CLIENT_ID=your-client-id`
+   - `TAILSCALE_OAUTH_CLIENT_SECRET=your-client-secret`
+   - `TAILSCALE_OAUTH_SCOPES=all:read,devices:read,network-logs:read` (optional, defaults to `all:read`)
+
+#### Method 2: API Key (Legacy)
+
 1. Go to the [API keys page](https://login.tailscale.com/admin/settings/keys) in your Tailscale Admin Console
 2. Create a new API key
 3. Copy the generated API key (starts with `tskey-api-`)
+4. Set `TAILSCALE_API_KEY=your-api-key`
 
 #### Organization Name
 1. Go to the [Settings page](https://login.tailscale.com/admin/settings/general) in your Tailscale Admin Console
@@ -45,9 +75,17 @@ Go to the [Logs tab](https://login.tailscale.com/admin/logs) in your Tailscale A
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
-| `TAILSCALE_API_KEY` | Your Tailscale API key | Yes | - |
 | `TAILSCALE_TAILNET` | Your organization name | Yes | - |
+| **OAuth Method** |
+| `TAILSCALE_OAUTH_CLIENT_ID` | OAuth client ID | Yes* | - |
+| `TAILSCALE_OAUTH_CLIENT_SECRET` | OAuth client secret | Yes* | - |
+| `TAILSCALE_OAUTH_SCOPES` | OAuth scopes (comma-separated) | No | `all:read` |
+| **API Key Method** |
+| `TAILSCALE_API_KEY` | Your Tailscale API key | Yes* | - |
+| **Other** |
 | `PORT` | Backend server port | No | `8080` |
+
+*Either OAuth credentials OR API key must be provided
 
 ## Deployment Options
 
@@ -55,6 +93,23 @@ Go to the [Logs tab](https://login.tailscale.com/admin/logs) in your Tailscale A
 
 Create a `docker-compose.yml` file:
 
+**Using OAuth (Recommended):**
+```yaml
+services:
+  tsflow:
+    image: ghcr.io/rajsinghtech/tsflow:latest
+    container_name: tsflow
+    ports:
+      - "8080:8080"
+    environment:
+      - TAILSCALE_OAUTH_CLIENT_ID=your-client-id
+      - TAILSCALE_OAUTH_CLIENT_SECRET=your-client-secret
+      - TAILSCALE_TAILNET=your-organization
+      - PORT=8080
+    restart: unless-stopped
+```
+
+**Using API Key:**
 ```yaml
 services:
   tsflow:

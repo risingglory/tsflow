@@ -22,7 +22,7 @@ func main() {
 		log.Fatalf("Configuration error: %v", err)
 	}
 
-	tailscaleService := services.NewTailscaleService(cfg.TailscaleAPIKey, cfg.TailscaleTailnet)
+	tailscaleService := services.NewTailscaleService(cfg)
 	handlerService := handlers.NewHandlers(tailscaleService)
 
 	if cfg.Environment == "production" {
@@ -77,6 +77,13 @@ func main() {
 	log.Printf("Starting TSFlow server on port %s", port)
 	log.Printf("Tailnet: %s", cfg.TailscaleTailnet)
 	log.Printf("Environment: %s", cfg.Environment)
+	
+	// Log authentication method being used
+	if cfg.TailscaleOAuthClientID != "" && cfg.TailscaleOAuthClientSecret != "" {
+		log.Printf("Authentication: OAuth Client Credentials (Client ID: %s)", cfg.TailscaleOAuthClientID)
+	} else {
+		log.Printf("Authentication: API Key")
+	}
 
 	if err := router.Run("0.0.0.0:" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
