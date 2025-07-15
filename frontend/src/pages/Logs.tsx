@@ -163,12 +163,12 @@ export default function Logs() {
       // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase()
-        if (
-          !entry.traffic.src.toLowerCase().includes(query) &&
-          !entry.traffic.dst.toLowerCase().includes(query) &&
-          !entry.logEntry.nodeId.toLowerCase().includes(query) &&
-          !getProtocolName(entry.traffic.proto).toLowerCase().includes(query)
-        ) {
+        const srcMatch = entry.traffic.src?.toLowerCase().includes(query) || false
+        const dstMatch = entry.traffic.dst?.toLowerCase().includes(query) || false
+        const nodeMatch = entry.logEntry.nodeId?.toLowerCase().includes(query) || false
+        const protoMatch = getProtocolName(entry.traffic.proto).toLowerCase().includes(query)
+        
+        if (!srcMatch && !dstMatch && !nodeMatch && !protoMatch) {
           return false
         }
       }
