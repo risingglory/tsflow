@@ -764,6 +764,10 @@ const NetworkView: React.FC = () => {
       node.attr('transform', (d: NetworkNode) => `translate(${d.x},${d.y})`)
     })
 
+    // Cleanup function to stop the simulation
+    return () => {
+      simulation.stop()
+    }
   }, [filteredData])
 
   const resetAllFilters = () => {
@@ -935,12 +939,16 @@ const NetworkView: React.FC = () => {
             </div>
             <div className="space-x-3">
               <button
-                onClick={() => {
+                onClick={async () => {
                   setLoading(true)
-                  Promise.all([
-                    refetchNetworkLogs(),
-                    refetchDevices()
-                  ]).finally(() => setLoading(false))
+                  try {
+                    await Promise.all([
+                      refetchNetworkLogs(),
+                      refetchDevices()
+                    ])
+                  } finally {
+                    setLoading(false)
+                  }
                 }}
                 className="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 focus:ring-2 focus:ring-blue-500 transition-colors"
               >
@@ -1050,12 +1058,16 @@ const NetworkView: React.FC = () => {
               )}
             
             <button
-                onClick={() => {
+                onClick={async () => {
                   setLoading(true)
-                  Promise.all([
-                    refetchNetworkLogs(),
-                    refetchDevices()
-                  ]).finally(() => setLoading(false))
+                  try {
+                    await Promise.all([
+                      refetchNetworkLogs(),
+                      refetchDevices()
+                    ])
+                  } finally {
+                    setLoading(false)
+                  }
                 }}
                 className="mt-2 w-full flex items-center justify-center px-3 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 focus:ring-2 focus:ring-blue-500 transition-colors"
                 title="Refresh data"

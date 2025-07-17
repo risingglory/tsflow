@@ -32,8 +32,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
     if (theme === 'auto') {
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-      mediaQuery.addEventListener('change', updateEffectiveTheme)
-      return () => mediaQuery.removeEventListener('change', updateEffectiveTheme)
+      const handleChange = () => updateEffectiveTheme()
+      mediaQuery.addEventListener('change', handleChange)
+      return () => mediaQuery.removeEventListener('change', handleChange)
     }
   }, [theme])
 

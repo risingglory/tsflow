@@ -62,67 +62,9 @@ export interface TrafficFlow {
 }
 
 // UI State Types
-export interface DeviceNode {
-  id: string
-  name: string
-  hostname: string
-  ip: string
-  os: string
-  online: boolean
-  tags: string[]
-  totalTraffic: number
-  connections: number
-  x?: number
-  y?: number
-  fx?: number
-  fy?: number
-}
-
-export interface FlowLink {
-  source: string
-  target: string
-  value: number
-  protocol: string
-  port: number
-  rxBytes: number
-  txBytes: number
-  packets: number
-}
-
 export interface NetworkTopology {
-  nodes: DeviceNode[]
-  links: FlowLink[]
-}
-
-export interface TrafficMetrics {
-  totalBytes: number
-  totalPackets: number
-  deviceCount: number
-  activeConnections: number
-  topProtocols: ProtocolStat[]
-  topDevices: DeviceStat[]
-  timeRange: {
-    start: Date
-    end: Date
-  }
-}
-
-export interface ProtocolStat {
-  protocol: string
-  bytes: number
-  packets: number
-  connections: number
-  percentage: number
-}
-
-export interface DeviceStat {
-  id: string
-  name: string
-  rxBytes: number
-  txBytes: number
-  totalBytes: number
-  connections: number
-  percentage: number
+  nodes: TailscaleDevice[]
+  links: TrafficFlow[]
 }
 
 // Filter and Search Types
@@ -144,26 +86,6 @@ export interface NetworkFilter {
   search: string
 }
 
-export interface SearchQuery {
-  protocol?: string
-  traffic?: string
-  tag?: string
-  device?: string
-  port?: number
-  text: string
-}
-
-// Visualization Layout Types
-export type LayoutType = 'force' | 'circular' | 'grid' | 'hierarchical'
-
-export interface LayoutConfig {
-  type: LayoutType
-  strength?: number
-  distance?: number
-  centerForce?: number
-  collisionRadius?: number
-}
-
 // API Configuration
 export interface TailscaleConfig {
   apiKey: string
@@ -177,14 +99,6 @@ export interface ApiError {
   status: number
   code?: string
 }
-
-// Time Range Presets
-export const TIME_RANGE_PRESETS = {
-  'last-hour': { hours: 1 },
-  'last-day': { days: 1 },
-  'last-week': { days: 7 },
-  'custom': null
-} as const
 
 // Protocol mapping
 export const PROTOCOL_NAMES: Record<number, string> = {
@@ -213,4 +127,4 @@ export const COMMON_PORTS: Record<number, string> = {
   3306: 'MySQL',
   6379: 'Redis',
   27017: 'MongoDB'
-} 
+}

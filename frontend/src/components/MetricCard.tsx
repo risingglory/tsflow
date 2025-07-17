@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import React, { ReactNode } from 'react'
 import { clsx } from 'clsx'
 
 interface MetricCardProps {
@@ -11,7 +11,7 @@ interface MetricCardProps {
   className?: string
 }
 
-export default function MetricCard({
+const MetricCard = React.memo(function MetricCard({
   title,
   value,
   icon,
@@ -58,4 +58,6 @@ export default function MetricCard({
       )}
     </div>
   )
-} 
+})
+
+export default MetricCard 

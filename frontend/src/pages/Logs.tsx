@@ -1,8 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Search, Download, Calendar, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, Download, Calendar, RefreshCw, ChevronLeft, ChevronRight, FileText } from 'lucide-react'
 import useSWR from 'swr'
 import Layout from '@/components/Layout'
 import { fetcher, formatBytes } from '@/lib/api'
+import { getTimeRange } from '@/lib/time'
+import { TableRowSkeleton } from '@/components/LoadingSkeleton'
+import EmptyState from '@/components/EmptyState'
 
 interface TrafficEntry {
   proto: number
@@ -44,61 +47,32 @@ export default function Logs() {
   const [selectedEntry, setSelectedEntry] = useState<LogEntry | null>(null)
   
   // Pagination states
-  const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage, setItemsPerPage] = useState(50)
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(50)
   
   // Custom time range states
-  const [useCustomTimeRange, setUseCustomTimeRange] = useState(false)
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [timeRangeFilter, setTimeRangeFilter] = useState<string>('5m')
+  const [customTime, setCustomTime] = useState(false)
+  const [start, setStart] = useState('')
+  const [end, setEnd] = useState('')
+  const [timeFilter, setTimeFilter] = useState<string>('5m')
 
   // Fetch Tailscale network logs
   const networkLogsApiUrl = useMemo(() => {
     const baseUrl = '/network-logs'
     const params = new URLSearchParams()
     
-    if (useCustomTimeRange && startDate && endDate) {
-      params.append('start', new Date(startDate).toISOString())
-      params.append('end', new Date(endDate).toISOString())
-    } else if (timeRangeFilter !== 'all') {
+    if (customTime && start && end) {
+      params.append('start', new Date(start).toISOString())
+      params.append('end', new Date(end).toISOString())
+    } else if (timeFilter !== 'all') {
       // Convert time range to timestamp
-      const now = new Date()
-      let since: Date
-      switch (timeRangeFilter) {
-        case '5m':
-          since = new Date(now.getTime() - 5 * 60 * 1000)
-          break
-        case '15m':
-          since = new Date(now.getTime() - 15 * 60 * 1000)
-          break
-        case '30m':
-          since = new Date(now.getTime() - 30 * 60 * 1000)
-          break
-        case '1h':
-          since = new Date(now.getTime() - 60 * 60 * 1000)
-          break
-        case '6h':
-          since = new Date(now.getTime() - 6 * 60 * 60 * 1000)
-          break
-        case '24h':
-          since = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-          break
-        case '7d':
-          since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-          break
-        case '30d':
-          since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-          break
-        default:
-          since = new Date(now.getTime() - 5 * 60 * 1000) // Default to last 5m
-      }
-      params.append('start', since.toISOString())
-      params.append('end', now.toISOString())
+      const { start: sinceTime, end: nowTime } = getTimeRange(timeFilter)
+      params.append('start', sinceTime.toISOString())
+      params.append('end', nowTime.toISOString())
     }
     
     return `${baseUrl}?${params.toString()}`
-  }, [timeRangeFilter, useCustomTimeRange, startDate, endDate])
+  }, [timeFilter, customTime, start, end])
 
   const { data: networkLogsData, mutate: refetchNetworkLogs } = useSWR(networkLogsApiUrl, fetcher, {
     errorRetryCount: 2,
@@ -106,7 +80,7 @@ export default function Logs() {
     refreshInterval: 120000
   })
 
-  const networkLogs = (Array.isArray(networkLogsData) && networkLogsData.length > 0 && 'logged' in networkLogsData[0]) ? networkLogsData : []
+  const networkLogs = Array.isArray(networkLogsData) ? networkLogsData : []
 
   // Set default date range to show most recent data (last 5 minutes)
   useEffect(() => {
@@ -123,8 +97,8 @@ export default function Logs() {
       return `${year}-${month}-${day}T${hours}:${minutes}`
     }
     
-    setStartDate(formatForInput(fiveMinutesAgo))
-    setEndDate(formatForInput(now))
+    setStart(formatForInput(fiveMinutesAgo))
+    setEnd(formatForInput(now))
     setLoading(false)
   }, [])
 
@@ -155,18 +129,18 @@ export default function Logs() {
     })
 
     return entries
-  }, [networkLogs, useCustomTimeRange, startDate, endDate])
+  }, [networkLogs, customTime, start, end])
 
   // Filter entries based on search and filters
   const filteredEntries = useMemo(() => {
     return flattenedEntries.filter(entry => {
       // Search filter
       if (searchQuery) {
-        const query = searchQuery.toLowerCase()
-        const srcMatch = entry.traffic.src?.toLowerCase().includes(query) || false
-        const dstMatch = entry.traffic.dst?.toLowerCase().includes(query) || false
-        const nodeMatch = entry.logEntry.nodeId?.toLowerCase().includes(query) || false
-        const protoMatch = getProtocolName(entry.traffic.proto).toLowerCase().includes(query)
+        const q = searchQuery.toLowerCase()
+        const srcMatch = entry.traffic.src?.toLowerCase().includes(q)
+        const dstMatch = entry.traffic.dst?.toLowerCase().includes(q) 
+        const nodeMatch = entry.logEntry.nodeId?.toLowerCase().includes(q)
+        const protoMatch = getProtocolName(entry.traffic.proto).toLowerCase().includes(q)
         
         if (!srcMatch && !dstMatch && !nodeMatch && !protoMatch) {
           return false
@@ -189,18 +163,15 @@ export default function Logs() {
 
   // Reset to first page when filters change
   useEffect(() => {
-    setCurrentPage(1)
-  }, [searchQuery, protocolFilter, trafficTypeFilter, timeRangeFilter, useCustomTimeRange, startDate, endDate])
+    setPage(1)
+  }, [searchQuery, protocolFilter, trafficTypeFilter, timeFilter, customTime, start, end])
 
-  // Calculate pagination values
-  const totalPages = Math.ceil(filteredEntries.length / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
-  const currentEntries = filteredEntries.slice(startIndex, endIndex)
+  const totalPages = Math.ceil(filteredEntries.length / perPage)
+  const start_idx = (page - 1) * perPage
+  const entries = filteredEntries.slice(start_idx, start_idx + perPage)
 
-  // Get unique protocols and traffic types for filters
-  const uniqueProtocols = Array.from(new Set(flattenedEntries.map(e => getProtocolName(e.traffic.proto))))
-  const uniqueTrafficTypes = Array.from(new Set(flattenedEntries.map(e => e.traffic.type)))
+  const protocols = [...new Set(flattenedEntries.map(e => getProtocolName(e.traffic.proto)))]
+  const trafficTypes = [...new Set(flattenedEntries.map(e => e.traffic.type))]
 
   const exportLogs = () => {
     const dataStr = JSON.stringify(filteredEntries, null, 2)
@@ -213,18 +184,7 @@ export default function Logs() {
     URL.revokeObjectURL(url)
   }
 
-  if (loading) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600 dark:text-gray-400">Loading log data...</p>
-          </div>
-        </div>
-      </Layout>
-    )
-  }
+  // Don't show full page loading state, handle it inline
 
   return (
     <Layout>
@@ -233,15 +193,9 @@ export default function Logs() {
         <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
-              <span>{filteredEntries.length.toLocaleString()} flows from {networkLogs.length.toLocaleString()} log entries</span>
-              <span>•</span>
-              <span>{uniqueProtocols.length} protocols</span>
-              <span>•</span>
-              <span>Page {currentPage} of {totalPages}</span>
-              <span>•</span>
-              <span>{useCustomTimeRange && startDate && endDate ? 
-                `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}` :
-                timeRangeFilter}</span>
+              <span>{filteredEntries.length} flows • {protocols.length} protocols • Page {page}/{totalPages} • {customTime && start && end ? 
+                `${new Date(start).toLocaleDateString()} - ${new Date(end).toLocaleDateString()}` :
+                timeFilter}</span>
             </div>
             <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
               <Calendar className="w-4 h-4" />
@@ -252,7 +206,10 @@ export default function Logs() {
 
         <div className="flex flex-1 overflow-hidden">
           {/* Filters Sidebar */}
-          <div className="w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto flex-shrink-0">
+          <aside 
+            className="w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto flex-shrink-0"
+            aria-label="Filters and search"
+          >
             <div className="p-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Search & Filter</h3>
               
@@ -280,8 +237,8 @@ export default function Logs() {
                   <input
                     type="checkbox"
                     id="customTimeRangeLogs"
-                    checked={useCustomTimeRange}
-                    onChange={(e) => setUseCustomTimeRange(e.target.checked)}
+                    checked={customTime}
+                    onChange={(e) => setCustomTime(e.target.checked)}
                     className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 bg-white dark:bg-gray-700"
                   />
                   <label htmlFor="customTimeRangeLogs" className="ml-2 text-sm text-gray-700 dark:text-gray-300">
@@ -289,14 +246,14 @@ export default function Logs() {
                   </label>
                 </div>
 
-                {useCustomTimeRange ? (
+                {customTime ? (
                   <div className="space-y-3">
                     <div>
                       <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Start Date & Time</label>
                       <input
                         type="datetime-local"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
+                        value={start}
+                        onChange={(e) => setStart(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                       />
                     </div>
@@ -304,8 +261,8 @@ export default function Logs() {
                       <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">End Date & Time</label>
                       <input
                         type="datetime-local"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
+                        value={end}
+                        onChange={(e) => setEnd(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                       />
                     </div>
@@ -313,8 +270,8 @@ export default function Logs() {
                 ) : (
                   <div className="flex space-x-2">
                     <select
-                      value={timeRangeFilter}
-                      onChange={(e) => setTimeRangeFilter(e.target.value)}
+                      value={timeFilter}
+                      onChange={(e) => setTimeFilter(e.target.value)}
                       className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     >
                       <option value="5m">Last 5 Minutes</option>
@@ -330,9 +287,13 @@ export default function Logs() {
                 )}
                 
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     setLoading(true)
-                    refetchNetworkLogs().finally(() => setLoading(false))
+                    try {
+                      await refetchNetworkLogs()
+                    } finally {
+                      setLoading(false)
+                    }
                   }}
                   className="mt-2 w-full flex items-center justify-center px-3 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 focus:ring-2 focus:ring-blue-500 transition-colors"
                   title="Refresh data"
@@ -351,7 +312,7 @@ export default function Logs() {
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
                   <option value="all">All Protocols</option>
-                  {uniqueProtocols.map(protocol => (
+                  {protocols.map(protocol => (
                     <option key={protocol} value={protocol}>{protocol}</option>
                   ))}
                 </select>
@@ -366,7 +327,7 @@ export default function Logs() {
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
                   <option value="all">All Traffic Types</option>
-                  {uniqueTrafficTypes.map(type => (
+                  {trafficTypes.map(type => (
                     <option key={type} value={type}>{type}</option>
                   ))}
                 </select>
@@ -376,10 +337,10 @@ export default function Logs() {
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Items per page</label>
                 <select
-                  value={itemsPerPage}
+                  value={perPage}
                   onChange={(e) => {
-                    setItemsPerPage(Number(e.target.value))
-                    setCurrentPage(1) // Reset to first page
+                    setPerPage(Number(e.target.value))
+                    setPage(1) // Reset to first page
                   }}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
@@ -406,52 +367,56 @@ export default function Logs() {
                 <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
                   <div>Total Flows: {flattenedEntries.length.toLocaleString()}</div>
                   <div>Filtered: {filteredEntries.length.toLocaleString()}</div>
-                  <div>Showing: {Math.min(itemsPerPage, filteredEntries.length - startIndex)} of {filteredEntries.length.toLocaleString()}</div>
+                  <div>Showing: {Math.min(perPage, filteredEntries.length - start_idx)} of {filteredEntries.length.toLocaleString()}</div>
                   <div>Log Entries: {networkLogs.length.toLocaleString()}</div>
                   <div>Data Size: {formatBytes(JSON.stringify(networkLogs).length)}</div>
-                  <div>Time Range: {useCustomTimeRange && startDate && endDate ? 
-                    `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}` :
-                    timeRangeFilter}</div>
+                  <div>Time Range: {customTime && start && end ? 
+                    `${new Date(start).toLocaleDateString()} - ${new Date(end).toLocaleDateString()}` :
+                    timeFilter}</div>
                 </div>
               </div>
             </div>
-          </div>
+          </aside>
 
           {/* Main Content */}
           <div className="flex-1 flex flex-col min-w-0">
             {/* Pagination Controls - Top */}
-            <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 flex-shrink-0">
+            <nav 
+              className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 flex-shrink-0"
+              aria-label="Pagination controls top"
+            >
               <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-600 dark:text-gray-400">
-                  Showing {startIndex + 1} to {Math.min(endIndex, filteredEntries.length)} of {filteredEntries.length.toLocaleString()} flows
+                  Showing {start_idx + 1} to {Math.min(start_idx + perPage, filteredEntries.length)} of {filteredEntries.length.toLocaleString()} flows
                 </div>
                 <div className="flex items-center space-x-2">
                   <button
-                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                    disabled={currentPage === 1}
+                    onClick={() => setPage(Math.max(1, page - 1))}
+                    disabled={page === 1}
                     className="p-2 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    aria-label="Previous page"
                   >
-                    <ChevronLeft className="w-4 h-4" />
+                    <ChevronLeft className="w-4 h-4" aria-hidden="true" />
                   </button>
                   <div className="flex items-center space-x-1">
                     {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                       let pageNum
                       if (totalPages <= 5) {
                         pageNum = i + 1
-                      } else if (currentPage <= 3) {
+                      } else if (page <= 3) {
                         pageNum = i + 1
-                      } else if (currentPage >= totalPages - 2) {
+                      } else if (page >= totalPages - 2) {
                         pageNum = totalPages - 4 + i
                       } else {
-                        pageNum = currentPage - 2 + i
+                        pageNum = page - 2 + i
                       }
                       
                       return (
                         <button
                           key={pageNum}
-                          onClick={() => setCurrentPage(pageNum)}
+                          onClick={() => setPage(pageNum)}
                           className={`px-3 py-1 rounded-md text-sm transition-colors ${
-                            currentPage === pageNum
+                            page === pageNum
                               ? 'bg-blue-600 text-white'
                               : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                           }`}
@@ -462,15 +427,16 @@ export default function Logs() {
                     })}
                   </div>
                   <button
-                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                    disabled={currentPage === totalPages}
+                    onClick={() => setPage(Math.min(totalPages, page + 1))}
+                    disabled={page === totalPages}
                     className="p-2 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    aria-label="Next page"
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className="w-4 h-4" aria-hidden="true" />
                   </button>
                 </div>
               </div>
-            </div>
+            </nav>
 
             {/* Logs Table */}
             <div className="flex-1 overflow-auto">
@@ -488,21 +454,27 @@ export default function Logs() {
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                  {currentEntries.length === 0 ? (
+                  {loading ? (
+                    // Show skeleton rows while loading
+                    Array.from({ length: 10 }).map((_, index) => (
+                      <TableRowSkeleton key={index} />
+                    ))
+                  ) : entries.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-12 text-center">
-                        <div className="text-gray-500 dark:text-gray-400">
-                          <div className="text-lg font-medium mb-2">No network logs found</div>
-                          <div className="text-sm space-y-1">
-                            <p>Network logging may need to be enabled in your Tailscale admin console.</p>
-                            <p>Visit <a href="https://login.tailscale.com/admin/logs" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline">Tailscale Admin → Logs</a> to enable network logging.</p>
-                            <p>Or try a different time range - logs may only be available for recent activity.</p>
-                          </div>
-                        </div>
+                      <td colSpan={8} className="px-6 py-12">
+                        <EmptyState
+                          icon={FileText}
+                          title="No network logs found"
+                          description="Network logging may need to be enabled in your Tailscale admin console or try a different time range."
+                          action={{
+                            label: "Enable Network Logging",
+                            onClick: () => window.open('https://login.tailscale.com/admin/logs', '_blank')
+                          }}
+                        />
                       </td>
                     </tr>
                   ) : (
-                    currentEntries.map((entry) => (
+                    entries.map((entry) => (
                     <tr
                       key={entry.index}
                       className="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors"
@@ -549,43 +521,48 @@ export default function Logs() {
             </div>
 
             {/* Pagination Controls - Bottom */}
-            <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-6 py-3 flex-shrink-0">
+            <nav 
+              className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-6 py-3 flex-shrink-0"
+              aria-label="Pagination controls bottom"
+            >
               <div className="flex items-center justify-center">
                 <div className="flex items-center space-x-2">
                   <button
-                    onClick={() => setCurrentPage(1)}
-                    disabled={currentPage === 1}
+                    onClick={() => setPage(1)}
+                    disabled={page === 1}
                     className="px-3 py-1 rounded-md text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     First
                   </button>
                   <button
-                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                    disabled={currentPage === 1}
+                    onClick={() => setPage(Math.max(1, page - 1))}
+                    disabled={page === 1}
                     className="p-2 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    aria-label="Previous page"
                   >
-                    <ChevronLeft className="w-4 h-4" />
+                    <ChevronLeft className="w-4 h-4" aria-hidden="true" />
                   </button>
                   <span className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400">
-                    Page {currentPage} of {totalPages}
+                    Page {page} of {totalPages}
                   </span>
                   <button
-                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                    disabled={currentPage === totalPages}
+                    onClick={() => setPage(Math.min(totalPages, page + 1))}
+                    disabled={page === totalPages}
                     className="p-2 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    aria-label="Next page"
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className="w-4 h-4" aria-hidden="true" />
                   </button>
                   <button
-                    onClick={() => setCurrentPage(totalPages)}
-                    disabled={currentPage === totalPages}
+                    onClick={() => setPage(totalPages)}
+                    disabled={page === totalPages}
                     className="px-3 py-1 rounded-md text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     Last
                   </button>
                 </div>
               </div>
-            </div>
+            </nav>
           </div>
 
           {/* Details Panel */}

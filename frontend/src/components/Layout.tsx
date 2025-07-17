@@ -36,22 +36,32 @@ export default function Layout({ children, networkStats, onResetZoom, onClearSel
         <div
           className="fixed inset-0 z-20 bg-black bg-opacity-50 lg:hidden"
           onClick={() => setSidebarOpen(false)}
+          aria-label="Close sidebar"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              setSidebarOpen(false)
+            }
+          }}
         />
       )}
 
       {/* Sidebar */}
-      <div
+      <aside
         className={clsx(
           'fixed inset-y-0 left-0 z-30 w-64 bg-white dark:bg-gray-800 shadow-lg transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
+        aria-label="Main navigation"
       >
         <div className="flex h-full flex-col">
           {/* Logo */}
           <div className="flex h-16 items-center justify-between px-6 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 bg-slate-800 rounded-lg flex items-center justify-center">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                   {/* Main hub node */}
                   <circle cx="10" cy="10" r="2" fill="#3B82F6"/>
                   {/* Satellite nodes */}
@@ -78,8 +88,9 @@ export default function Layout({ children, networkStats, onResetZoom, onClearSel
             <button
               onClick={() => setSidebarOpen(false)}
               className="lg:hidden text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+              aria-label="Close sidebar"
             >
-              <X className="h-6 w-6" />
+              <X className="h-6 w-6" aria-hidden="true" />
             </button>
           </div>
 
@@ -100,8 +111,9 @@ export default function Layout({ children, networkStats, onResetZoom, onClearSel
                       ? 'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
                       : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   )}
+                  aria-current={isCurrent ? 'page' : undefined}
                 >
-                  <Icon className={clsx('mr-3 h-5 w-5', isCurrent ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500')} />
+                  <Icon className={clsx('mr-3 h-5 w-5', isCurrent ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500')} aria-hidden="true" />
                   {item.name}
                 </Link>
               )
@@ -115,7 +127,7 @@ export default function Layout({ children, networkStats, onResetZoom, onClearSel
             </p>
           </div>
         </div>
-      </div>
+      </aside>
 
       {/* Main content area */}
       <div className="flex-1 flex flex-col min-w-0">
@@ -125,8 +137,9 @@ export default function Layout({ children, networkStats, onResetZoom, onClearSel
             <button
               onClick={() => setSidebarOpen(true)}
               className="lg:hidden text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+              aria-label="Open sidebar"
             >
-              <Menu className="h-6 w-6" />
+              <Menu className="h-6 w-6" aria-hidden="true" />
             </button>
             
             <div className="flex-1 flex justify-center lg:justify-start">
@@ -150,9 +163,9 @@ export default function Layout({ children, networkStats, onResetZoom, onClearSel
                   <button
                     onClick={onResetZoom}
                     className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
-                    title="Reset Zoom"
+                    aria-label="Reset zoom to fit all nodes"
                   >
-                    <ZoomOut className="w-4 h-4" />
+                    <ZoomOut className="w-4 h-4" aria-hidden="true" />
                   </button>
                   
                   <button
@@ -165,8 +178,8 @@ export default function Layout({ children, networkStats, onResetZoom, onClearSel
               )}
               
               {/* Connection status indicator */}
-              <div className="flex items-center space-x-2">
-                <div className="h-2 w-2 bg-green-400 rounded-full animate-pulse"></div>
+              <div className="flex items-center space-x-2" role="status" aria-live="polite">
+                <div className="h-2 w-2 bg-green-400 rounded-full animate-pulse" aria-hidden="true"></div>
                 <span className="text-sm text-gray-600 dark:text-gray-400">Connected</span>
               </div>
             </div>

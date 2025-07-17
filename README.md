@@ -2,7 +2,6 @@
 
 A modern, real-time web application for visualizing and analyzing network traffic flows within Tailscale networks.
 
-
 ## Quick Start
 > **Important:** TSFlow requires the **Tailscale Network Flow Logs** feature. This is available on **Premium** and **Enterprise** plans and must be enabled in your Tailscale admin console. The application will not show any flow data otherwise.
 

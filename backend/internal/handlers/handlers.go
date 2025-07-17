@@ -8,19 +8,16 @@ import (
 	"github.com/rajsinghtech/tsflow/backend/internal/services"
 )
 
-// Handlers contains all HTTP handlers
 type Handlers struct {
 	tailscaleService *services.TailscaleService
 }
 
-// NewHandlers creates a new handlers instance
 func NewHandlers(tailscaleService *services.TailscaleService) *Handlers {
 	return &Handlers{
 		tailscaleService: tailscaleService,
 	}
 }
 
-// HealthCheck handles health check requests
 func (h *Handlers) HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":    "healthy",
@@ -29,7 +26,6 @@ func (h *Handlers) HealthCheck(c *gin.Context) {
 	})
 }
 
-// GetDevices handles device listing requests
 func (h *Handlers) GetDevices(c *gin.Context) {
 	devices, err := h.tailscaleService.GetDevices()
 	if err != nil {
@@ -43,18 +39,77 @@ func (h *Handlers) GetDevices(c *gin.Context) {
 	c.JSON(http.StatusOK, devices)
 }
 
-// GetNetworkLogs handles network logs requests
 func (h *Handlers) GetNetworkLogs(c *gin.Context) {
-	// Get time range parameters from query string
 	start := c.Query("start")
 	end := c.Query("end")
 
-	// Provide default time range if not specified (last 5 minutes)
 	if start == "" || end == "" {
 		now := time.Now()
-		fiveMinutesAgo := now.Add(-5 * time.Minute)
-		start = fiveMinutesAgo.Format(time.RFC3339)
+		start = now.Add(-5 * time.Minute).Format(time.RFC3339)
 		end = now.Format(time.RFC3339)
+	}
+
+	st, err := time.Parse(time.RFC3339, start)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "bad start time",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	et, err := time.Parse(time.RFC3339, end)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "bad end time", "message": err.Error()})
+		return
+	}
+
+	if et.Before(st) {
+		c.JSON(400, gin.H{"error": "end time before start time"})
+		return
+	}
+
+	now := time.Now()
+	if st.After(now) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "future start time not allowed"})
+		return
+	}
+
+	duration := et.Sub(st)
+	if duration > 24*time.Hour {
+		chunks, err := h.tailscaleService.GetNetworkLogsChunkedParallel(start, end, 6*time.Hour, 3)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "Failed to fetch network logs",
+				"message": err.Error(),
+				"hint":    "Try selecting a smaller time range",
+			})
+			return
+		}
+
+		var allLogs []interface{}
+		for _, chunk := range chunks {
+			if logsArray, ok := chunk.([]interface{}); ok {
+				allLogs = append(allLogs, logsArray...)
+			} else if logsMap, ok := chunk.(map[string]interface{}); ok {
+				if logs, exists := logsMap["logs"]; exists {
+					if logsArray, ok := logs.([]interface{}); ok {
+						allLogs = append(allLogs, logsArray...)
+					}
+				}
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"logs": allLogs,
+			"metadata": gin.H{
+				"chunked":     true,
+				"chunks":      len(chunks),
+				"duration":    duration.String(),
+				"totalLogs":   len(allLogs),
+			},
+		})
+		return
 	}
 
 	logs, err := h.tailscaleService.GetNetworkLogs(start, end)
@@ -69,7 +124,6 @@ func (h *Handlers) GetNetworkLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, logs)
 }
 
-// GetNetworkMap handles network map requests
 func (h *Handlers) GetNetworkMap(c *gin.Context) {
 	networkMap, err := h.tailscaleService.GetNetworkMap()
 	if err != nil {
@@ -83,7 +137,6 @@ func (h *Handlers) GetNetworkMap(c *gin.Context) {
 	c.JSON(http.StatusOK, networkMap)
 }
 
-// GetDeviceFlows handles device flow requests
 func (h *Handlers) GetDeviceFlows(c *gin.Context) {
 	deviceID := c.Param("deviceId")
 	if deviceID == "" {

@@ -6,13 +6,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"sync"
 	"time"
 
 	"github.com/rajsinghtech/tsflow/backend/internal/config"
+	"github.com/rajsinghtech/tsflow/backend/internal/utils"
 	"golang.org/x/oauth2/clientcredentials"
 )
 
-// TailscaleService handles interactions with the Tailscale API
 type TailscaleService struct {
 	apiKey      string
 	oauthConfig *clientcredentials.Config
@@ -22,7 +24,6 @@ type TailscaleService struct {
 	useOAuth    bool
 }
 
-// Device represents a Tailscale device
 type Device struct {
 	ID                     string   `json:"id"`
 	Name                   string   `json:"name"`
@@ -44,12 +45,10 @@ type Device struct {
 	AdvertisedRoutes       []string `json:"advertisedRoutes"`
 }
 
-// DevicesResponse represents the response from the devices API
 type DevicesResponse struct {
 	Devices []Device `json:"devices"`
 }
 
-// NetworkLogEntry represents a network log entry
 type NetworkLogEntry struct {
 	ID        string `json:"id"`
 	Timestamp string `json:"timestamp"`
@@ -59,19 +58,16 @@ type NetworkLogEntry struct {
 	Action    string `json:"action"`
 }
 
-// NetworkLogsResponse represents the response from the network logs API
 type NetworkLogsResponse struct {
 	Logs []NetworkLogEntry `json:"logs"`
 }
 
-// NewTailscaleService creates a new Tailscale service
 func NewTailscaleService(cfg *config.Config) *TailscaleService {
 	ts := &TailscaleService{
 		tailnet: cfg.TailscaleTailnet,
 		baseURL: cfg.TailscaleAPIURL,
 	}
 
-	// Prioritize OAuth if configured, fallback to API key
 	if cfg.TailscaleOAuthClientID != "" && cfg.TailscaleOAuthClientSecret != "" {
 		ts.oauthConfig = &clientcredentials.Config{
 			ClientID:     cfg.TailscaleOAuthClientID,
@@ -80,30 +76,76 @@ func NewTailscaleService(cfg *config.Config) *TailscaleService {
 			TokenURL:     cfg.TailscaleAPIURL + "/api/v2/oauth/token",
 		}
 		ts.client = ts.oauthConfig.Client(context.Background())
-		ts.client.Timeout = 2 * time.Minute
+		ts.client.Timeout = 5 * time.Minute
 		ts.useOAuth = true
 	} else if cfg.TailscaleAPIKey != "" {
 		ts.apiKey = cfg.TailscaleAPIKey
 		ts.client = &http.Client{
-			Timeout: 2 * time.Minute,
+			Timeout: 5 * time.Minute,
 		}
 		ts.useOAuth = false
+	} else {
+		ts.client = &http.Client{
+			Timeout: 5 * time.Minute,
+		}
 	}
 
 	return ts
 }
 
-// makeRequest makes an authenticated request to the Tailscale API
-func (ts *TailscaleService) makeRequest(endpoint string) ([]byte, error) {
+func (ts *TailscaleService) makeRequest(ctx context.Context, endpoint string) ([]byte, error) {
+	return ts.makeRequestWithRetry(ctx, endpoint, 3, 1*time.Second)
+}
+
+func (ts *TailscaleService) makeRequestWithRetry(ctx context.Context, endpoint string, maxRetries int, initialDelay time.Duration) ([]byte, error) {
+	var lastErr error
+	delay := initialDelay
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
+
+			timer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, ctx.Err()
+			case <-timer.C:
+			}
+			delay *= 2
+		}
+
+		body, err := ts.doRequest(ctx, endpoint)
+		if err == nil {
+			return body, nil
+		}
+
+		lastErr = err
+
+		if !ts.isRetryableError(err) {
+			return nil, err
+		}
+
+		if attempt < maxRetries {
+			fmt.Printf("Request failed (attempt %d/%d), retrying in %v: %v\n", attempt+1, maxRetries+1, delay, err)
+		}
+	}
+
+	return nil, fmt.Errorf("request failed after %d attempts: %w", maxRetries+1, lastErr)
+}
+
+func (ts *TailscaleService) doRequest(ctx context.Context, endpoint string) ([]byte, error) {
 	url := fmt.Sprintf("%s/api/v2%s", ts.baseURL, endpoint)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// OAuth client handles authentication automatically via HTTP client
-	// For API key authentication, set Authorization header manually
 	if !ts.useOAuth && ts.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+ts.apiKey)
 	}
@@ -117,7 +159,7 @@ func (ts *TailscaleService) makeRequest(endpoint string) ([]byte, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+		return nil, utils.HTTPError(resp.StatusCode, string(body))
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -128,11 +170,17 @@ func (ts *TailscaleService) makeRequest(endpoint string) ([]byte, error) {
 	return body, nil
 }
 
-// GetDevices retrieves all devices in the tailnet
+func (ts *TailscaleService) isRetryableError(err error) bool {
+	return utils.IsRetryable(err)
+}
+
 func (ts *TailscaleService) GetDevices() (*DevicesResponse, error) {
 	endpoint := fmt.Sprintf("/tailnet/%s/devices", ts.tailnet)
 
-	body, err := ts.makeRequest(endpoint)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	body, err := ts.makeRequest(ctx, endpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -145,27 +193,221 @@ func (ts *TailscaleService) GetDevices() (*DevicesResponse, error) {
 	return &response, nil
 }
 
-// GetNetworkLogs retrieves network logs for the tailnet with time range
 func (ts *TailscaleService) GetNetworkLogs(start, end string) (interface{}, error) {
-	endpoint := fmt.Sprintf("/tailnet/%s/network-logs", ts.tailnet)
+	endpoint := fmt.Sprintf("/tailnet/%s/logging/network", ts.tailnet)
 
-	// Add query parameters for time range
 	if start != "" && end != "" {
-		endpoint += fmt.Sprintf("?start=%s&end=%s", start, end)
+		endpoint += fmt.Sprintf("?start=%s&end=%s", url.QueryEscape(start), url.QueryEscape(end))
 	}
 
-	body, err := ts.makeRequest(endpoint)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	body, err := ts.makeRequest(ctx, endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch network logs: %w", err)
 	}
 
-	// Parse as generic interface to handle both array and object responses
 	var response interface{}
 	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal network logs response: %w", err)
 	}
 
 	return response, nil
+}
+
+// GetNetworkLogsChunked retrieves network logs in chunks for large time ranges
+func (ts *TailscaleService) GetNetworkLogsChunked(start, end string, chunkSize time.Duration) ([]interface{}, error) {
+	startTime, err := time.Parse(time.RFC3339, start)
+	if err != nil {
+		return nil, fmt.Errorf("invalid start time: %w", err)
+	}
+
+	endTime, err := time.Parse(time.RFC3339, end)
+	if err != nil {
+		return nil, fmt.Errorf("invalid end time: %w", err)
+	}
+
+	// If the time range is small enough, use the regular method
+	if endTime.Sub(startTime) <= chunkSize {
+		result, err := ts.GetNetworkLogs(start, end)
+		if err != nil {
+			return nil, err
+		}
+		return []interface{}{result}, nil
+	}
+
+	// Split the time range into chunks
+	var allLogs []interface{}
+	currentStart := startTime
+
+	for currentStart.Before(endTime) {
+		currentEnd := currentStart.Add(chunkSize)
+		if currentEnd.After(endTime) {
+			currentEnd = endTime
+		}
+
+		// Fetch logs for this chunk
+		logs, err := ts.GetNetworkLogs(
+			currentStart.Format(time.RFC3339),
+			currentEnd.Format(time.RFC3339),
+		)
+		if err != nil {
+			// Log the error but continue with other chunks
+			fmt.Printf("Error fetching logs for chunk %s to %s: %v\n", 
+				currentStart.Format(time.RFC3339), 
+				currentEnd.Format(time.RFC3339), 
+				err)
+		} else if logs != nil {
+			allLogs = append(allLogs, logs)
+		}
+
+		currentStart = currentEnd
+	}
+
+	return allLogs, nil
+}
+
+// GetNetworkLogsChunkedParallel retrieves network logs in parallel chunks for large time ranges
+func (ts *TailscaleService) GetNetworkLogsChunkedParallel(start, end string, chunkSize time.Duration, maxConcurrency int) ([]interface{}, error) {
+	return ts.GetNetworkLogsChunkedParallelWithContext(context.Background(), start, end, chunkSize, maxConcurrency)
+}
+
+// GetNetworkLogsChunkedParallelWithContext retrieves network logs in parallel chunks with context support
+func (ts *TailscaleService) GetNetworkLogsChunkedParallelWithContext(ctx context.Context, start, end string, chunkSize time.Duration, maxConcurrency int) ([]interface{}, error) {
+	startTime, err := time.Parse(time.RFC3339, start)
+	if err != nil {
+		return nil, fmt.Errorf("invalid start time: %w", err)
+	}
+
+	endTime, err := time.Parse(time.RFC3339, end)
+	if err != nil {
+		return nil, fmt.Errorf("invalid end time: %w", err)
+	}
+
+	// Calculate chunks
+	var chunks []struct{ start, end time.Time }
+	currentStart := startTime
+
+	for currentStart.Before(endTime) {
+		currentEnd := currentStart.Add(chunkSize)
+		if currentEnd.After(endTime) {
+			currentEnd = endTime
+		}
+		chunks = append(chunks, struct{ start, end time.Time }{currentStart, currentEnd})
+		currentStart = currentEnd
+	}
+
+	// If only one chunk, use regular method
+	if len(chunks) <= 1 {
+		result, err := ts.GetNetworkLogs(start, end)
+		if err != nil {
+			return nil, err
+		}
+		return []interface{}{result}, nil
+	}
+
+	// Channel for collecting results
+	type result struct {
+		index int
+		logs  interface{}
+		err   error
+	}
+	resultsChan := make(chan result, len(chunks))
+
+	// Semaphore for concurrency control
+	semaphore := make(chan struct{}, maxConcurrency)
+	var wg sync.WaitGroup
+
+	// Launch parallel requests
+	for i, chunk := range chunks {
+		wg.Add(1)
+		go func(index int, chunkStart, chunkEnd time.Time) {
+			defer wg.Done()
+			
+			// Recover from panics
+			defer func() {
+				if r := recover(); r != nil {
+					resultsChan <- result{
+						index: index,
+						logs:  nil,
+						err:   fmt.Errorf("panic recovered: %v", r),
+					}
+				}
+			}()
+			
+			// Check context before proceeding
+			select {
+			case <-ctx.Done():
+				resultsChan <- result{
+					index: index,
+					logs:  nil,
+					err:   ctx.Err(),
+				}
+				return
+			default:
+			}
+			
+			// Acquire semaphore
+			select {
+			case semaphore <- struct{}{}:
+				defer func() { <-semaphore }()
+			case <-ctx.Done():
+				resultsChan <- result{
+					index: index,
+					logs:  nil,
+					err:   ctx.Err(),
+				}
+				return
+			}
+
+			logs, err := ts.GetNetworkLogs(
+				chunkStart.Format(time.RFC3339),
+				chunkEnd.Format(time.RFC3339),
+			)
+			
+			resultsChan <- result{
+				index: index,
+				logs:  logs,
+				err:   err,
+			}
+		}(i, chunk.start, chunk.end)
+	}
+
+	// Close results channel when all goroutines complete
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+
+	// Collect results
+	results := make([]interface{}, len(chunks))
+	var hasError bool
+
+	for res := range resultsChan {
+		if res.err != nil {
+			fmt.Printf("Error fetching chunk %d: %v\n", res.index, res.err)
+			hasError = true
+			// Store nil for failed chunks
+			results[res.index] = nil
+		} else {
+			results[res.index] = res.logs
+		}
+	}
+
+	// Filter out nil results and maintain order
+	var allLogs []interface{}
+	for _, logs := range results {
+		if logs != nil {
+			allLogs = append(allLogs, logs)
+		}
+	}
+
+	if hasError && len(allLogs) == 0 {
+		return nil, fmt.Errorf("failed to fetch any logs from parallel requests")
+	}
+
+	return allLogs, nil
 }
 
 // GetNetworkMap retrieves the network map (simplified version)

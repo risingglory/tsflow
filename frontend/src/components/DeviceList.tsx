@@ -1,3 +1,4 @@
+import React from 'react'
 import { Monitor, Smartphone, Server, Laptop } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import type { TailscaleDevice } from '@/types/tailscale'
@@ -9,7 +10,7 @@ interface DeviceListProps {
   limit?: number
 }
 
-export default function DeviceList({ devices, loading = false, limit }: DeviceListProps) {
+const DeviceList = React.memo(function DeviceList({ devices, loading = false, limit }: DeviceListProps) {
   if (loading) {
     return (
       <div className="space-y-3">
@@ -131,4 +132,6 @@ export default function DeviceList({ devices, loading = false, limit }: DeviceLi
       )}
     </div>
   )
-} 
+})
+
+export default DeviceList 

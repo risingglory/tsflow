@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/gin-contrib/cors"
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/rajsinghtech/tsflow/backend/internal/config"
@@ -30,6 +31,9 @@ func main() {
 	}
 
 	router := gin.Default()
+
+	// Add gzip compression middleware
+	router.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	corsConfig := cors.DefaultConfig()
 	if cfg.Environment == "production" {

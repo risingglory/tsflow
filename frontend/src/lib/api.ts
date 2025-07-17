@@ -1,9 +1,11 @@
 import type { 
   TailscaleDevice, 
-  NetworkFlowLog, 
   TailscaleConfig,
-  ApiError 
+  ApiError,
+  NetworkFlowLog,
+  NetworkTopology
 } from '@/types/tailscale'
+import { validateDeviceResponse, validateNetworkLogsResponse } from './validation'
 
 // Backend configuration
 const BACKEND_BASE_URL = import.meta.env.DEV 
@@ -19,14 +21,6 @@ class TailscaleAPI {
 
   private async request<T>(endpoint: string, options: Record<string, unknown> = {}): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`
-    
-    // Debug logging
-    console.log('Backend API Request:', {
-      isDev: import.meta.env.DEV,
-      baseUrl: this.baseUrl,
-      endpoint,
-      fullUrl: url
-    })
 
     try {
       const response = await fetch(url, {
@@ -67,31 +61,33 @@ class TailscaleAPI {
 
   // Get all devices in the tailnet
   async getDevices(): Promise<TailscaleDevice[]> {
-    const response = await this.request<{ devices: TailscaleDevice[] }>(
+    const response = await this.request<{ devices: TailscaleDevice[] } | TailscaleDevice[]>(
       `/api/devices`
     )
-    return response.devices
+    return validateDeviceResponse(response)
   }
 
   // Get network flow logs
   async getNetworkLogs(queryParams?: string): Promise<NetworkFlowLog[]> {
     const endpoint = queryParams ? `/api/network-logs?${queryParams}` : `/api/network-logs`
-    const response = await this.request<{logs: NetworkFlowLog[]}>(endpoint)
-    return response.logs || []
+    const response = await this.request<NetworkFlowLog[] | { logs: NetworkFlowLog[], metadata?: Record<string, unknown> }>(endpoint)
+    
+    // Validate and return the response
+    return validateNetworkLogsResponse(response)
   }
 
   // Get network map data
-  async getNetworkMap(): Promise<any> {
+  async getNetworkMap(): Promise<NetworkTopology> {
     return await this.request(`/api/network-map`)
   }
 
   // Get device flows
-  async getDeviceFlows(deviceId: string): Promise<any> {
+  async getDeviceFlows(deviceId: string): Promise<NetworkFlowLog[]> {
     return await this.request(`/api/devices/${deviceId}/flows`)
   }
 
   // Health check
-  async healthCheck(): Promise<any> {
+  async healthCheck(): Promise<{ status: string, version?: string }> {
     return await this.request('/health')
   }
 
@@ -126,6 +122,17 @@ class TailscaleAPI {
 
 // Create singleton instance
 export const tailscaleAPI = new TailscaleAPI()
+
+// Type-specific fetchers
+export const devicesFetcher = async (): Promise<TailscaleDevice[]> => {
+  return tailscaleAPI.getDevices()
+}
+
+export const networkLogsFetcher = async (url: string): Promise<NetworkFlowLog[]> => {
+  const urlObj = new URL(url, 'http://localhost')
+  const queryParams = urlObj.search.substring(1)
+  return tailscaleAPI.getNetworkLogs(queryParams)
+}
 
 // SWR fetcher function with better error handling
 export const fetcher = async (url: string) => {

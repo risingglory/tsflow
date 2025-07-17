@@ -21,7 +21,11 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Error caught by ErrorBoundary:', error, errorInfo)
+    // In production, you might want to send this to an error reporting service
+    // For now, we just suppress the console error in production
+    if (import.meta.env.DEV) {
+      console.error('Error caught by ErrorBoundary:', error, errorInfo)
+    }
   }
 
   render() {
