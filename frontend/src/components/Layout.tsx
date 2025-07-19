@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { Network, Home, Menu, X, ZoomOut, FileText } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { clsx } from 'clsx'
+import ThemeToggle from '@/components/ThemeToggle'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -177,7 +178,8 @@ export default function Layout({ children, networkStats, onResetZoom, onClearSel
                 </>
               )}
               
-              {/* Connection status indicator */}
+              <ThemeToggle />
+              
               <div className="flex items-center space-x-2" role="status" aria-live="polite">
                 <div className="h-2 w-2 bg-green-400 rounded-full animate-pulse" aria-hidden="true"></div>
                 <span className="text-sm text-gray-600 dark:text-gray-400">Connected</span>

@@ -86,6 +86,11 @@ class TailscaleAPI {
     return await this.request(`/api/devices/${deviceId}/flows`)
   }
 
+  // Get DNS nameservers
+  async getDNSNameservers(): Promise<{ dns: string[], magicDNS: boolean, domains: string[] }> {
+    return await this.request('/api/dns/nameservers')
+  }
+
   // Health check
   async healthCheck(): Promise<{ status: string, version?: string }> {
     return await this.request('/health')
@@ -132,6 +137,10 @@ export const networkLogsFetcher = async (url: string): Promise<NetworkFlowLog[]>
   const urlObj = new URL(url, 'http://localhost')
   const queryParams = urlObj.search.substring(1)
   return tailscaleAPI.getNetworkLogs(queryParams)
+}
+
+export const dnsNameserversFetcher = async (): Promise<{ dns: string[], magicDNS: boolean, domains: string[] }> => {
+  return tailscaleAPI.getDNSNameservers()
 }
 
 // SWR fetcher function with better error handling

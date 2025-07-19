@@ -54,6 +54,7 @@ func main() {
 		api.GET("/network-logs", handlerService.GetNetworkLogs)
 		api.GET("/network-map", handlerService.GetNetworkMap)
 		api.GET("/devices/:deviceId/flows", handlerService.GetDeviceFlows)
+		api.GET("/dns/nameservers", handlerService.GetDNSNameservers)
 	}
 
 	var distPath string

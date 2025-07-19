@@ -2,7 +2,7 @@ import React from 'react'
 import { Activity, Users, Globe, TrendingUp, AlertCircle, Wifi } from 'lucide-react'
 import useSWR from 'swr'
 import Layout from '@/components/Layout'
-import { devicesFetcher } from '@/lib/api'
+import { devicesFetcher, dnsNameserversFetcher } from '@/lib/api'
 import type { TailscaleDevice } from '@/types/tailscale'
 import { CardSkeleton, DeviceListSkeleton } from '@/components/LoadingSkeleton'
 import EmptyState from '@/components/EmptyState'
@@ -13,6 +13,16 @@ export default function Dashboard() {
     errorRetryCount: 2,
     revalidateOnFocus: false
   })
+
+  // Fetch DNS nameservers
+  const { data: dnsData } = useSWR<{ dns: string[], magicDNS: boolean, domains: string[] }>(
+    '/dns/nameservers', 
+    dnsNameserversFetcher, 
+    {
+      errorRetryCount: 2,
+      revalidateOnFocus: false
+    }
+  )
 
   // Calculate metrics from the real data
   const metrics = React.useMemo(() => {
@@ -147,6 +157,43 @@ export default function Dashboard() {
           </p>
         </div>
       </div>
+      )}
+
+      {/* DNS Info */}
+      {dnsData && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">DNS</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Nameservers</p>
+              <div className="mt-2 space-y-1">
+                {dnsData.dns?.length > 0 ? (
+                  dnsData.dns.map((ns: string) => (
+                    <p key={ns} className="text-sm font-mono text-gray-900 dark:text-gray-100">{ns}</p>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-600 dark:text-gray-300">Default</p>
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">MagicDNS</p>
+              <p className="mt-2 text-sm text-gray-900 dark:text-gray-100">
+                {dnsData.magicDNS ? 'Enabled' : 'Disabled'}
+              </p>
+              {dnsData.domains?.length > 0 && (
+                <>
+                  <p className="mt-3 text-sm font-medium text-gray-500 dark:text-gray-400">Search Domains</p>
+                  <div className="mt-1">
+                    {dnsData.domains.map((d: string) => (
+                      <span key={d} className="text-sm text-gray-600 dark:text-gray-300">{d} </span>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Error display */}

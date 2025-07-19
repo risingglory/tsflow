@@ -157,3 +157,16 @@ func (h *Handlers) GetDeviceFlows(c *gin.Context) {
 
 	c.JSON(http.StatusOK, flows)
 }
+
+func (h *Handlers) GetDNSNameservers(c *gin.Context) {
+	nameservers, err := h.tailscaleService.GetDNSNameservers()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to fetch DNS nameservers",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, nameservers)
+}

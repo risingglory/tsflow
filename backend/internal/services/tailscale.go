@@ -460,3 +460,48 @@ func (ts *TailscaleService) GetDeviceFlows(deviceID string) (map[string]interfac
 
 	return flows, nil
 }
+
+// GetDNSNameservers retrieves DNS config for the tailnet
+func (ts *TailscaleService) GetDNSNameservers() (map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Get nameservers
+	nameserversBody, err := ts.makeRequest(ctx, fmt.Sprintf("/tailnet/%s/dns/nameservers", ts.tailnet))
+	if err != nil {
+		return nil, err
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(nameserversBody, &result); err != nil {
+		return nil, err
+	}
+
+	// Get preferences
+	prefsBody, err := ts.makeRequest(ctx, fmt.Sprintf("/tailnet/%s/dns/preferences", ts.tailnet))
+	if err == nil {
+		var prefs map[string]interface{}
+		if json.Unmarshal(prefsBody, &prefs) == nil {
+			result["magicDNS"] = prefs["magicDNS"]
+			if domains, ok := prefs["searchDomains"]; ok {
+				result["domains"] = domains
+			}
+		}
+	}
+
+	// Default values
+	if result["magicDNS"] == nil {
+		result["magicDNS"] = false
+	}
+	if result["domains"] == nil {
+		result["domains"] = []string{}
+	}
+
+	// Show MagicDNS resolver when enabled
+	dns, _ := result["dns"].([]interface{})
+	if len(dns) == 0 && result["magicDNS"] == true {
+		result["dns"] = []string{"100.100.100.100"}
+	}
+
+	return result, nil
+}
