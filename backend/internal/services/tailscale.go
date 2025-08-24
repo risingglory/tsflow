@@ -12,6 +12,7 @@ import (
 
 	"github.com/rajsinghtech/tsflow/backend/internal/config"
 	"github.com/rajsinghtech/tsflow/backend/internal/utils"
+	tailscale "tailscale.com/client/tailscale/v2"
 	"golang.org/x/oauth2/clientcredentials"
 )
 
@@ -22,6 +23,7 @@ type TailscaleService struct {
 	baseURL     string
 	client      *http.Client
 	useOAuth    bool
+	tsClient    *tailscale.Client
 }
 
 type Device struct {
@@ -73,15 +75,25 @@ func NewTailscaleService(cfg *config.Config) *TailscaleService {
 			ClientID:     cfg.TailscaleOAuthClientID,
 			ClientSecret: cfg.TailscaleOAuthClientSecret,
 			Scopes:       cfg.TailscaleOAuthScopes,
-			TokenURL:     cfg.TailscaleAPIURL + "/api/v2/oauth/token",
+			TokenURL:     cfg.TailscaleAPIURL + "/oauth/token",
 		}
-		ts.client = ts.oauthConfig.Client(context.Background())
-		ts.client.Timeout = 5 * time.Minute
+		oauthClient := ts.oauthConfig.Client(context.Background())
+		oauthClient.Timeout = 5 * time.Minute
+		
+		ts.tsClient = &tailscale.Client{
+			HTTP:     oauthClient,
+			Tailnet:  cfg.TailscaleTailnet,
+		}
+		ts.client = oauthClient
 		ts.useOAuth = true
 	} else if cfg.TailscaleAPIKey != "" {
 		ts.apiKey = cfg.TailscaleAPIKey
 		ts.client = &http.Client{
 			Timeout: 5 * time.Minute,
+		}
+		ts.tsClient = &tailscale.Client{
+			APIKey:  cfg.TailscaleAPIKey,
+			Tailnet: cfg.TailscaleTailnet,
 		}
 		ts.useOAuth = false
 	} else {
@@ -175,6 +187,44 @@ func (ts *TailscaleService) isRetryableError(err error) bool {
 }
 
 func (ts *TailscaleService) GetDevices() (*DevicesResponse, error) {
+	if ts.tsClient != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		
+		devices, err := ts.tsClient.Devices().List(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get devices from tailscale client: %w", err)
+		}
+		
+		// Convert tailscale client devices to our format
+		var ourDevices []Device
+		for _, device := range devices {
+			ourDevices = append(ourDevices, Device{
+				ID:                     device.ID,
+				Name:                   device.Name,
+				Hostname:               device.Hostname,
+				User:                   device.User,
+				OS:                     device.OS,
+				Addresses:              device.Addresses,
+				Online:                 !device.LastSeen.IsZero() && time.Since(device.LastSeen.Time) < 2*time.Minute,
+				LastSeen:               device.LastSeen.Time.Format(time.RFC3339),
+				Authorized:             device.Authorized,
+				KeyExpiryDisabled:      device.KeyExpiryDisabled,
+				Created:                device.Created.Time.Format(time.RFC3339),
+				MachineKey:             device.MachineKey,
+				NodeKey:                device.NodeKey,
+				ClientVersion:          device.ClientVersion,
+				UpdateAvailable:        device.UpdateAvailable,
+				Blocksincomingnonnodes: device.BlocksIncomingConnections,
+				EnabledRoutes:          device.EnabledRoutes,
+				AdvertisedRoutes:       device.AdvertisedRoutes,
+			})
+		}
+		
+		return &DevicesResponse{Devices: ourDevices}, nil
+	}
+	
+	// Fallback to old implementation
 	endpoint := fmt.Sprintf("/tailnet/%s/devices", ts.tailnet)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -194,6 +244,40 @@ func (ts *TailscaleService) GetDevices() (*DevicesResponse, error) {
 }
 
 func (ts *TailscaleService) GetNetworkLogs(start, end string) (interface{}, error) {
+	if ts.tsClient != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		
+		startTime, err := time.Parse(time.RFC3339, start)
+		if err != nil {
+			return nil, fmt.Errorf("invalid start time: %w", err)
+		}
+		
+		endTime, err := time.Parse(time.RFC3339, end)
+		if err != nil {
+			return nil, fmt.Errorf("invalid end time: %w", err)
+		}
+		
+		var logs []tailscale.NetworkFlowLog
+		
+		err = ts.tsClient.Logging().GetNetworkFlowLogs(ctx, tailscale.NetworkFlowLogsRequest{
+			Start: startTime,
+			End:   endTime,
+		}, func(log tailscale.NetworkFlowLog) error {
+			logs = append(logs, log)
+			return nil
+		})
+		
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch network logs from tailscale client: %w", err)
+		}
+		
+		return map[string]interface{}{
+			"logs": logs,
+		}, nil
+	}
+	
+	// Fallback to old implementation
 	endpoint := fmt.Sprintf("/tailnet/%s/logging/network", ts.tailnet)
 
 	if start != "" && end != "" {

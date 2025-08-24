@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react'
-import * as d3 from 'd3'
+import React, { useEffect, useState, useMemo } from 'react'
 import { RefreshCw, XCircle, ChevronLeft, ChevronRight, Sidebar } from 'lucide-react'
 import useSWR from 'swr'
 import Layout from '@/components/Layout'
+import NetworkGraph from '@/components/NetworkGraph'
 import { fetcher } from '@/lib/api'
 
 
@@ -115,7 +115,6 @@ const getDeviceName = (ip: string, devices: TailscaleDevice[] = []): string => {
 
 
 const NetworkView: React.FC = () => {
-  const svgRef = useRef<SVGSVGElement>(null)
   const [selectedNode, setSelectedNode] = useState<NetworkNode | null>(null)
   const [selectedLink, setSelectedLink] = useState<NetworkLink | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -466,309 +465,23 @@ const NetworkView: React.FC = () => {
     return { nodes: filteredNodes, links: filteredLinks }
   }, [nodes, links, searchQuery, protocolFilters, trafficTypeFilters, ipCategoryFilters, ipVersionFilter, minBandwidth, maxBandwidth, nodeCountFilter])
 
-  // D3 visualization
-  useEffect(() => {
-    if (!svgRef.current || filteredData.nodes.length === 0) return
+  // Handle node click
+  const handleNodeClick = (node: NetworkNode) => {
+    setSelectedNode(node)
+    setSelectedLink(null)
+  }
 
-    const svg = d3.select(svgRef.current)
-    svg.selectAll('*').remove()
+  // Handle link click
+  const handleLinkClick = (link: NetworkLink) => {
+    setSelectedLink(link)
+    setSelectedNode(null)
+  }
 
-    const width = 1200
-    const height = 800
-    
-    svg.attr('width', width).attr('height', height)
-
-    const g = svg.append('g')
-
-    // Create zoom behavior
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, 4])
-      .on('zoom', (event) => {
-        g.attr('transform', event.transform)
-      })
-
-    svg.call(zoom)
-
-
-
-        // Create force simulation with no gravity - pure network topology layout
-    const simulation = d3.forceSimulation(filteredData.nodes)
-      .force('link', d3.forceLink(filteredData.links).id((d: d3.SimulationNodeDatum) => (d as NetworkNode).id).distance(200).strength(0.5))
-      .force('charge', d3.forceManyBody().strength(-800).distanceMin(120).distanceMax(600))
-      .force('collision', d3.forceCollide().radius((d: d3.SimulationNodeDatum) => {
-        const node = d as NetworkNode
-        const maxTextLength = Math.max(node.displayName.length, node.ip.length, 12)
-        const nodeWidth = Math.max(120, Math.min(maxTextLength * 8 + 20, 200))
-        return nodeWidth / 2 + 35 // Good spacing for fan-out
-      }).strength(1.0).iterations(3))
-      .alphaDecay(0.01) // Quick settling
-      .velocityDecay(0.85) // Moderate friction for natural movement
-
-    // Create links
-    const link = g.append('g')
-      .selectAll('line')
-      .data(filteredData.links)
-      .enter().append('line')
-      .attr('stroke', (d: NetworkLink) => {
-        switch (d.trafficType) {
-          case 'virtual': return '#3b82f6'
-          case 'subnet': return '#10b981'
-          case 'physical': return '#f59e0b'
-          default: return '#6b7280'
-        }
-      })
-      .attr('stroke-opacity', 0.6)
-      .attr('stroke-width', (d: NetworkLink) => Math.min(Math.max(Math.log(d.totalBytes + 1) / 2, 1), 8))
-
-    // Create nodes
-    const node = g.append('g')
-      .selectAll('g')
-      .data(filteredData.nodes)
-      .enter().append('g')
-      .call(d3.drag<SVGGElement, NetworkNode>()
-        .on('start', (event, d) => {
-          if (!event.active) simulation.alphaTarget(0.3).restart()
-          d.fx = d.x
-          d.fy = d.y
-          
-          // Find connected nodes and fix their positions too for cluster dragging
-          const connectedNodes = new Set<string>()
-          filteredData.links.forEach(l => {
-            const sourceId = typeof l.source === 'string' ? l.source : l.source.id
-            const targetId = typeof l.target === 'string' ? l.target : l.target.id
-            if (sourceId === d.id) connectedNodes.add(targetId)
-            if (targetId === d.id) connectedNodes.add(sourceId)
-          })
-          
-          // Fix connected nodes positions relative to dragged node
-          filteredData.nodes.forEach(node => {
-            if (connectedNodes.has(node.id)) {
-              node.fx = node.x
-              node.fy = node.y
-            }
-          })
-        })
-        .on('drag', (event, d) => {
-          const dx = event.x - d.x!
-          const dy = event.y - d.y!
-          
-          d.fx = event.x
-          d.fy = event.y
-          
-          // Move connected nodes with the dragged node
-          const connectedNodes = new Set<string>()
-          filteredData.links.forEach(l => {
-            const sourceId = typeof l.source === 'string' ? l.source : l.source.id
-            const targetId = typeof l.target === 'string' ? l.target : l.target.id
-            if (sourceId === d.id) connectedNodes.add(targetId)
-            if (targetId === d.id) connectedNodes.add(sourceId)
-          })
-          
-          filteredData.nodes.forEach(node => {
-            if (connectedNodes.has(node.id) && node.fx !== null && node.fy !== null && node.fx !== undefined && node.fy !== undefined) {
-              node.fx = node.fx + dx * 0.3 // Reduced influence for more natural movement
-              node.fy = node.fy + dy * 0.3
-            }
-          })
-        })
-        .on('end', (event, d) => {
-          if (!event.active) simulation.alphaTarget(0)
-        d.fx = null
-        d.fy = null
-          
-          // Release connected nodes
-          filteredData.nodes.forEach(node => {
-            if (node.id !== d.id) {
-              node.fx = null
-              node.fy = null
-            }
-          })
-        }))
-
-    // Helper function to truncate text
-    const truncateText = (text: string, maxLength: number) => {
-      return text.length > maxLength ? text.substring(0, maxLength - 3) + '...' : text
-    }
-
-    // Calculate box dimensions based on content
-    const getBoxDimensions = (d: NetworkNode) => {
-      const displayName = truncateText(d.displayName, 20)
-      const ip = d.displayName !== d.ip ? truncateText(d.ip, 20) : ''
-      const maxTextLength = Math.max(displayName.length, ip.length, 12) // minimum for traffic volume
-      const width = Math.max(120, Math.min(maxTextLength * 8 + 20, 200))
-      const height = 80
-      return { width, height, displayName, ip }
-    }
-
-    // Add rectangles to nodes (boxes instead of circles)
-    node.append('rect')
-      .attr('width', (d: NetworkNode) => getBoxDimensions(d).width)
-      .attr('height', (d: NetworkNode) => getBoxDimensions(d).height)
-      .attr('x', (d: NetworkNode) => -getBoxDimensions(d).width / 2)
-      .attr('y', (d: NetworkNode) => -getBoxDimensions(d).height / 2)
-      .attr('fill', (d: NetworkNode) => {
-        if (d.tags.includes('derp')) return '#fecaca'
-        if (d.tags.includes('tailscale')) return '#dbeafe'
-        if (d.tags.includes('private')) return '#dcfce7'
-        if (d.tags.includes('ipv6')) return '#e9d5ff'
-        return '#fef3c7'
-      })
-      .attr('stroke', (d: NetworkNode) => {
-        if (d.tags.includes('derp')) return '#dc2626'
-        if (d.tags.includes('tailscale')) return '#3b82f6'
-        if (d.tags.includes('private')) return '#10b981'
-        if (d.tags.includes('ipv6')) return '#8b5cf6'
-        return '#f59e0b'
-      })
-      .attr('stroke-width', 2)
-      .attr('rx', 8)
-      .attr('ry', 8)
-
-    // Add device name labels (primary)
-    node.append('text')
-      .text((d: NetworkNode) => getBoxDimensions(d).displayName)
-      .attr('x', 0)
-      .attr('y', -15)
-        .attr('text-anchor', 'middle')
-      .attr('font-size', '12px')
-      .attr('font-weight', 'bold')
-      .attr('fill', '#1f2937')
-      .style('user-select', 'none')
-
-    // Add IP address labels (secondary, only if different from display name)
-    node.append('text')
-      .text((d: NetworkNode) => getBoxDimensions(d).ip)
-      .attr('x', 0)
-      .attr('y', -2)
-            .attr('text-anchor', 'middle')
-      .attr('font-size', '10px')
-      .attr('fill', '#6b7280')
-      .style('user-select', 'none')
-
-    // Add traffic volume labels
-    node.append('text')
-      .text((d: NetworkNode) => formatBytes(d.totalBytes))
-      .attr('x', 0)
-      .attr('y', 12)
-          .attr('text-anchor', 'middle')
-      .attr('font-size', '9px')
-      .attr('fill', '#6b7280')
-      .style('user-select', 'none')
-
-    // Removed category tags from display as requested
-
-    // Handle node clicks with improved hiding
-    node.on('click', (_, d) => {
-      setSelectedNode(d)
-      setSelectedLink(null)
-      
-      // Get connected node IDs
-      const connectedNodeIds = new Set<string>()
-      filteredData.links.forEach(l => {
-        const sourceId = typeof l.source === 'string' ? l.source : l.source.id
-        const targetId = typeof l.target === 'string' ? l.target : l.target.id
-        if (sourceId === d.id) connectedNodeIds.add(targetId)
-        if (targetId === d.id) connectedNodeIds.add(sourceId)
-      })
-      
-      // Add the selected node itself
-      connectedNodeIds.add(d.id)
-      
-      // Hide/show nodes
-      node.style('opacity', (n: NetworkNode) => {
-        return connectedNodeIds.has(n.id) ? 1 : 0.1
-      })
-
-      // Hide/show links
-      link.style('opacity', (l: NetworkLink) => {
-        const sourceId = typeof l.source === 'string' ? l.source : l.source.id
-        const targetId = typeof l.target === 'string' ? l.target : l.target.id
-        return sourceId === d.id || targetId === d.id ? 0.9 : 0.05
-      })
-      
-      // Highlight selected node
-      node.selectAll('rect')
-        .attr('stroke-width', (n: unknown) => (n as NetworkNode).id === d.id ? 4 : 2)
-    })
-
-    // Handle link clicks with improved hiding
-    link.on('click', (_, d) => {
-      setSelectedLink(d)
-      setSelectedNode(null)
-      
-      const sourceId = typeof d.source === 'string' ? d.source : d.source.id
-      const targetId = typeof d.target === 'string' ? d.target : d.target.id
-      
-      // Get all connected nodes (both direct and indirect)
-      const connectedNodeIds = new Set<string>([sourceId, targetId])
-      
-      filteredData.links.forEach(l => {
-        const linkSourceId = typeof l.source === 'string' ? l.source : l.source.id
-        const linkTargetId = typeof l.target === 'string' ? l.target : l.target.id
-        if (linkSourceId === sourceId || linkSourceId === targetId) {
-          connectedNodeIds.add(linkTargetId)
-        }
-        if (linkTargetId === sourceId || linkTargetId === targetId) {
-          connectedNodeIds.add(linkSourceId)
-        }
-      })
-      
-      // Hide/show nodes
-      node.style('opacity', (n: any) => connectedNodeIds.has(n.id) ? 1 : 0.1)
-
-      // Hide/show links with better highlighting
-      link.style('opacity', (l: any) => {
-        const linkSourceId = typeof l.source === 'string' ? l.source : l.source.id
-        const linkTargetId = typeof l.target === 'string' ? l.target : l.target.id
-        if (linkSourceId === sourceId && linkTargetId === targetId) return 1.0 // Selected link
-        if (connectedNodeIds.has(linkSourceId) && connectedNodeIds.has(linkTargetId)) return 0.6 // Connected links
-        return 0.05 // Other links
-      })
-      .attr('stroke-width', (l: any) => {
-        const linkSourceId = typeof l.source === 'string' ? l.source : l.source.id
-        const linkTargetId = typeof l.target === 'string' ? l.target : l.target.id
-        return (linkSourceId === sourceId && linkTargetId === targetId) ? 
-          Math.min(Math.max(Math.log(l.totalBytes + 1) / 2, 1), 8) * 1.5 : 
-          Math.min(Math.max(Math.log(l.totalBytes + 1) / 2, 1), 8)
-      })
-      
-      // Highlight connected nodes
-      node.selectAll('rect')
-        .attr('stroke-width', (n: any) => connectedNodeIds.has(n.id) ? 3 : 2)
-    })
-
-    // Clear highlight on background click
-    svg.on('click', (event) => {
-      if (event.target === event.currentTarget) {
-        setSelectedNode(null)
-        setSelectedLink(null)
-        
-        // Reset all styling
-        node.style('opacity', 1)
-          .selectAll('rect')
-          .attr('stroke-width', 2)
-        
-        link.style('opacity', 0.6)
-          .attr('stroke-width', (d: any) => Math.min(Math.max(Math.log(d.totalBytes + 1) / 2, 1), 8))
-      }
-    })
-
-    // Update positions on simulation tick (removed auto-fit functionality)
-    simulation.on('tick', () => {
-      link
-        .attr('x1', (d: any) => d.source.x)
-        .attr('y1', (d: any) => d.source.y)
-        .attr('x2', (d: any) => d.target.x)
-        .attr('y2', (d: any) => d.target.y)
-
-      node.attr('transform', (d: NetworkNode) => `translate(${d.x},${d.y})`)
-    })
-
-    // Cleanup function to stop the simulation
-    return () => {
-      simulation.stop()
-    }
-  }, [filteredData])
+  // Handle background click
+  const handleBackgroundClick = () => {
+    setSelectedNode(null)
+    setSelectedLink(null)
+  }
 
   const resetAllFilters = () => {
     // Clear selections
@@ -793,61 +506,12 @@ const NetworkView: React.FC = () => {
     setMaxBandwidth(bandwidthRange.max)
     setNodeCountFilter(0)
     
-    // Reset visualization styling
-    if (svgRef.current) {
-      const svg = d3.select(svgRef.current)
-      svg.selectAll('g').selectAll('g')
-        .style('opacity', 1)
-        .selectAll('rect')
-        .attr('stroke-width', 2)
-      
-      svg.selectAll('line')
-        .style('opacity', 0.6)
-        .attr('stroke-width', (d: any) => Math.min(Math.max(Math.log(d.totalBytes + 1) / 2, 1), 8))
-    }
+    // Reset will be handled by the NetworkGraph component re-rendering
   }
 
   const resetZoom = () => {
-    if (svgRef.current && filteredData.nodes.length > 0) {
-      const svg = d3.select(svgRef.current)
-      const width = 1200
-      const height = 800
-      
-      // Check if nodes have coordinates
-      const nodesWithCoords = filteredData.nodes.filter(d => d.x !== undefined && d.y !== undefined)
-      
-      if (nodesWithCoords.length === 0) {
-        // If no coordinates, just reset to center
-        svg.transition().duration(750).call(
-          d3.zoom<SVGSVGElement, unknown>().transform,
-          d3.zoomIdentity.translate(0, 0).scale(1)
-        )
-        return
-      }
-      
-      // Calculate bounding box of all nodes
-      const padding = 100
-      const minX = Math.min(...nodesWithCoords.map(d => d.x!)) - padding
-      const maxX = Math.max(...nodesWithCoords.map(d => d.x!)) + padding
-      const minY = Math.min(...nodesWithCoords.map(d => d.y!)) - padding
-      const maxY = Math.max(...nodesWithCoords.map(d => d.y!)) + padding
-
-      const dataWidth = maxX - minX
-      const dataHeight = maxY - minY
-
-      // Calculate scale to fit all data
-      const scale = Math.min(width / dataWidth, height / dataHeight) * 0.8
-
-      // Calculate translation to center the data
-      const translateX = (width - dataWidth * scale) / 2 - minX * scale
-      const translateY = (height - dataHeight * scale) / 2 - minY * scale
-
-      // Apply the transform
-      svg.transition().duration(750).call(
-        d3.zoom<SVGSVGElement, unknown>().transform,
-        d3.zoomIdentity.translate(translateX, translateY).scale(scale)
-      )
-    }
+    // Reset zoom will be handled within the NetworkGraph component
+    // This is a placeholder for now
   }
 
   const formatBytes = (bytes: number) => {
@@ -1289,9 +953,15 @@ const NetworkView: React.FC = () => {
 
         {/* Main Network View */}
         <div className="flex-1 relative">
-          <svg
-            ref={svgRef}
-            className="w-full h-full cursor-move bg-gray-50 dark:bg-gray-900"
+          <NetworkGraph
+            nodes={filteredData.nodes}
+            links={filteredData.links}
+            devices={devices}
+            onNodeClick={handleNodeClick}
+            onLinkClick={handleLinkClick}
+            onBackgroundClick={handleBackgroundClick}
+            selectedNode={selectedNode}
+            selectedLink={selectedLink}
           />
           
           {/* Left Control Buttons */}
