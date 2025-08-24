@@ -63,16 +63,22 @@ const NetworkGraph: React.FC<NetworkGraphProps> = ({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
   }
 
-  const truncateText = (text: string, maxLength: number) => {
-    return text.length > maxLength ? text.substring(0, maxLength - 3) + '...' : text
-  }
 
   const getBoxDimensions = (d: NetworkNode) => {
-    const displayName = truncateText(d.displayName, 20)
-    const ip = d.displayName !== d.ip ? truncateText(d.ip, 20) : ''
-    const maxTextLength = Math.max(displayName.length, ip.length, 12)
-    const width = Math.max(120, Math.min(maxTextLength * 8 + 20, 200))
+    const displayName = d.displayName
+    const ip = d.displayName !== d.ip ? d.ip : ''
+    const trafficText = formatBytes(d.totalBytes)
+    
+    // Calculate width based on actual text content
+    // Using approximate character width of 7px for 12px font, 6px for 10px font, 5px for 9px font
+    const displayNameWidth = displayName.length * 7 // 12px font, bold
+    const ipWidth = ip.length * 6 // 10px font
+    const trafficWidth = trafficText.length * 5 // 9px font
+    
+    const contentWidth = Math.max(displayNameWidth, ipWidth, trafficWidth)
+    const width = contentWidth + 24 // 12px padding on each side
     const height = 80
+    
     return { width, height, displayName, ip }
   }
 

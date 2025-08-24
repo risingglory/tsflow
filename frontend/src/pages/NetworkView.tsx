@@ -110,7 +110,13 @@ const categorizeIP = (ip: string): string[] => {
 // Helper function to get device name from IP
 const getDeviceName = (ip: string, devices: TailscaleDevice[] = []): string => {
   const device = devices.find(d => d.addresses.includes(ip))
-  return device ? device.name : ip
+  if (device) {
+    // Extract just the device name part before the first dot
+    // e.g. "kartiks-macbook-pro.keiretsu.ts.net" -> "kartiks-macbook-pro"
+    const shortName = device.name.split('.')[0]
+    return shortName || device.name
+  }
+  return ip
 }
 
 
