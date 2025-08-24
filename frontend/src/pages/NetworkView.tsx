@@ -29,6 +29,9 @@ interface NetworkNode {
   tags: string[]
   isTailscale: boolean
   ips?: string[] // Track all IPs for merged devices
+  incomingPorts: Set<number> // Ports this device receives traffic on
+  outgoingPorts: Set<number> // Ports this device sends traffic to
+  protocols: Set<string> // Track protocols (TCP, UDP, ICMP, etc.)
   x?: number
   y?: number
   fx?: number | null
@@ -73,6 +76,23 @@ const getProtocolName = (proto: number): string => {
     case 255: return 'Reserved'
     default: return `Proto-${proto}`
   }
+}
+
+// Helper function to extract port from address:port string
+const extractPort = (address: string): number | null => {
+  // Handle IPv6 addresses like [fd7a:115c:a1e0::9001:b818]:62574
+  if (address.startsWith('[') && address.includes(']:')) {
+    const portStr = address.split(']:')[1]
+    return portStr ? parseInt(portStr, 10) : null
+  }
+  
+  // Handle IPv4 addresses like 100.72.184.20:53221
+  if (address.includes(':')) {
+    const portStr = address.split(':').pop()
+    return portStr ? parseInt(portStr, 10) : null
+  }
+  
+  return null
 }
 
 // Helper function to categorize IP addresses
@@ -291,7 +311,10 @@ const NetworkView: React.FC = () => {
             connections: 0,
             tags: categorizeIP(srcIP),
             isTailscale,
-            ips: [srcIP]
+            ips: [srcIP],
+            incomingPorts: new Set<number>(),
+            outgoingPorts: new Set<number>(),
+            protocols: new Set<string>()
           })
         } else {
           // Add this IP to the existing device node if not already present
@@ -324,7 +347,10 @@ const NetworkView: React.FC = () => {
             connections: 0,
             tags: categorizeIP(dstIP),
             isTailscale,
-            ips: [dstIP]
+            ips: [dstIP],
+            incomingPorts: new Set<number>(),
+            outgoingPorts: new Set<number>(),
+            protocols: new Set<string>()
           })
         } else {
           // Add this IP to the existing device node if not already present
@@ -352,8 +378,26 @@ const NetworkView: React.FC = () => {
         
         // For destination node: rxBytes from this traffic entry
         dstNode.txBytes += traffic.rxBytes || 0  // Reverse for destination
-        dstNode.rxBytes += traffic.txBytes || 0  // Reverse for destination
+        dstNode.rxBytes += traffic.rxBytes || 0  // Reverse for destination
         dstNode.totalBytes = dstNode.txBytes + dstNode.rxBytes
+        
+        // Track port and protocol information
+        const protocolName = getProtocolName(traffic.proto || 0)
+        srcNode.protocols.add(protocolName)
+        dstNode.protocols.add(protocolName)
+        
+        // Extract ports (only for TCP/UDP protocols)
+        if (traffic.proto === 6 || traffic.proto === 17) { // TCP or UDP
+          const srcPort = extractPort(traffic.src)
+          const dstPort = extractPort(traffic.dst)
+          
+          if (srcPort !== null) {
+            srcNode.outgoingPorts.add(srcPort) // Source uses this port to send
+          }
+          if (dstPort !== null) {
+            dstNode.incomingPorts.add(dstPort) // Destination receives on this port
+          }
+        }
 
         // Create or update link (use device IDs instead of IPs)
         const linkKey = `${srcNodeId}->${dstNodeId}`
@@ -1168,6 +1212,10 @@ const NetworkView: React.FC = () => {
                     <div className="w-3 h-3 border-2 border-red-600 bg-red-100 dark:bg-red-900 mr-2"></div>
                     <span>DERP Servers</span>
                   </div>
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 border-2 border-purple-600 bg-purple-100 dark:bg-purple-900 mr-2"></div>
+                    <span>IPv6 Devices</span>
+                  </div>
                 </div>
                 
                 <div className="mt-4">
@@ -1184,6 +1232,20 @@ const NetworkView: React.FC = () => {
                     <div className="flex items-center">
                       <div className="w-4 h-0.5 bg-yellow-500 mr-2"></div>
                       <span>Physical Traffic</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Port Boxes</h4>
+                  <div className="space-y-1 text-xs text-gray-700 dark:text-gray-300">
+                    <div className="flex items-center">
+                      <div className="w-4 h-4 border border-green-500 bg-green-100 dark:bg-green-900 mr-2 rounded"></div>
+                      <span>Incoming Ports (Left Side)</span>
+                    </div>
+                    <div className="flex items-center">
+                      <div className="w-4 h-4 border border-yellow-500 bg-yellow-100 dark:bg-yellow-900 mr-2 rounded"></div>
+                      <span>Outgoing Ports (Right Side)</span>
                     </div>
                   </div>
                 </div>

@@ -45,6 +45,7 @@ type Device struct {
 	Blocksincomingnonnodes bool     `json:"blocksIncomingnonnodes"`
 	EnabledRoutes          []string `json:"enabledRoutes"`
 	AdvertisedRoutes       []string `json:"advertisedRoutes"`
+	Tags                   []string `json:"tags"`
 }
 
 type DevicesResponse struct {
@@ -218,6 +219,7 @@ func (ts *TailscaleService) GetDevices() (*DevicesResponse, error) {
 				Blocksincomingnonnodes: device.BlocksIncomingConnections,
 				EnabledRoutes:          device.EnabledRoutes,
 				AdvertisedRoutes:       device.AdvertisedRoutes,
+				Tags:                   device.Tags,
 			})
 		}
 		
