@@ -34,6 +34,9 @@ WORKDIR /app
 COPY --from=backend-build /app/backend/tsflow-backend ./
 COPY --from=frontend-build /app/frontend/dist ./dist
 
+# Set default environment to production
+ENV ENVIRONMENT=production
+
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
