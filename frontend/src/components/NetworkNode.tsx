@@ -93,7 +93,7 @@ const NetworkNode = memo<NodeProps>(({ data, selected }) => {
     tempDiv.textContent = headerText;
     const headerWidth = tempDiv.offsetWidth + 140; // Increased space for traffic info
     maxWidth = Math.max(maxWidth, headerWidth);
-    totalHeight += 50; // Increased header height with margins
+    totalHeight += 45; // Header height with margins
     
     // Measure IP addresses
     processedData.ipv4Addresses.forEach(ip => {
@@ -105,13 +105,13 @@ const NetworkNode = memo<NodeProps>(({ data, selected }) => {
       tempDiv.textContent = `IPv6: ${displayIp}`;
       maxWidth = Math.max(maxWidth, tempDiv.offsetWidth + 20);
     });
-    totalHeight += (processedData.ipv4Addresses.length + processedData.ipv6Addresses.length) * 20;
+    totalHeight += (processedData.ipv4Addresses.length + processedData.ipv6Addresses.length) * 18;
     
     // Measure protocols
     if (processedData.protocolsList.length > 0) {
       tempDiv.textContent = `📡 ${processedData.protocolsList.join(', ')}`;
       maxWidth = Math.max(maxWidth, tempDiv.offsetWidth + 20);
-      totalHeight += 20;
+      totalHeight += 18; // Reduced from 20
     }
     
     // Calculate ports width (they wrap) - be more generous with spacing
@@ -120,7 +120,7 @@ const NetworkNode = memo<NodeProps>(({ data, selected }) => {
       const estimatedWidth = Math.max(maxWidth, 350); // Ensure minimum width for ports
       const portsPerRow = Math.max(1, Math.floor(estimatedWidth / avgPortWidth));
       const portRows = Math.ceil(processedData.uniquePorts.length / portsPerRow);
-      totalHeight += (portRows * 35) + 20; // Increased height per row and margin
+      totalHeight += (portRows * 30) + 15; // Reduced height per row and margin
       
       // Update maxWidth if ports need more space
       const actualPortsWidth = Math.min(processedData.uniquePorts.length, portsPerRow) * avgPortWidth;
@@ -140,7 +140,7 @@ const NetworkNode = memo<NodeProps>(({ data, selected }) => {
       const estimatedWidth = Math.max(maxWidth, 350);
       const tagsPerRow = Math.max(1, Math.floor(estimatedWidth / avgTagWidth));
       const tagRows = Math.ceil(processedData.deviceTags.length / tagsPerRow);
-      totalHeight += (tagRows * 32) + 15; // Increased height per row
+      totalHeight += (tagRows * 28) + 12; // Reduced height per row
       
       // Update maxWidth based on tag requirements
       const actualTagsWidth = Math.min(processedData.deviceTags.length, tagsPerRow) * avgTagWidth;
@@ -149,20 +149,20 @@ const NetworkNode = memo<NodeProps>(({ data, selected }) => {
     
     // Add user section height
     if ((data as NetworkNodeData).user) {
-      totalHeight += 25;
+      totalHeight += 22; // Reduced from 25
     }
     
     // Add footer height (includes Tailscale indicator)
-    totalHeight += 45;
+    totalHeight += 25; // Reduced from 45
     
-    // Add base padding, margins, and extra space for proper layout
-    totalHeight += 30;
+    // Add minimal base padding for proper layout
+    totalHeight += 15; // Reduced from 30
     
     document.body.removeChild(tempDiv);
     
     // Apply minimum constraints only - no maximum limits
-    const finalWidth = Math.max(320, maxWidth + padding + 60); // Further increased minimum and padding
-    const finalHeight = Math.max(160, totalHeight + 30); // Further increased height buffer
+    const finalWidth = Math.max(320, maxWidth + padding + 60);
+    const finalHeight = Math.max(140, totalHeight + 10); // Reduced buffer from 30 to 10
     
     // Node dimensions calculated successfully
     
@@ -314,7 +314,7 @@ const NetworkNode = memo<NodeProps>(({ data, selected }) => {
       )}
 
       {/* IP Addresses section */}
-      <section className="space-y-1 mb-3" aria-label="IP Addresses">
+      <section className="space-y-1 mb-2" aria-label="IP Addresses">
         {processedData.ipv4Addresses.map(ip => (
           <div key={ip} className="flex items-center gap-1 text-xs">
             <span className="text-blue-600 dark:text-blue-400 font-medium">IPv4:</span>
@@ -333,7 +333,7 @@ const NetworkNode = memo<NodeProps>(({ data, selected }) => {
 
       {/* Protocols section */}
       {processedData.protocolsList.length > 0 && (
-        <section className="mb-3" aria-label="Protocols">
+        <section className="mb-2" aria-label="Protocols">
           <div className="flex items-center gap-1 text-xs">
             <span className="text-gray-600 dark:text-gray-400">📡</span>
             <span className="text-gray-700 dark:text-gray-200 font-medium">
@@ -345,7 +345,7 @@ const NetworkNode = memo<NodeProps>(({ data, selected }) => {
 
       {/* Ports section */}
       {processedData.uniquePorts.length > 0 && (
-        <section className="mb-3" aria-label="Network Ports">
+        <section className="mb-2" aria-label="Network Ports">
           <div className="flex flex-wrap gap-1">
             {processedData.uniquePorts.map(port => (
               <span
@@ -362,7 +362,7 @@ const NetworkNode = memo<NodeProps>(({ data, selected }) => {
 
       {/* Tags section */}
       {processedData.deviceTags.length > 0 && (
-        <section className="flex flex-wrap gap-1" aria-label="Device Tags">
+        <section className="flex flex-wrap gap-1 mb-2" aria-label="Device Tags">
           {processedData.deviceTags.map(tag => (
             <span
               key={tag}
@@ -380,7 +380,7 @@ const NetworkNode = memo<NodeProps>(({ data, selected }) => {
       )}
 
       {/* Status indicators */}
-      <footer className="flex justify-between items-center mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
+      <footer className="flex justify-between items-center mt-2 pt-1 border-t border-gray-200 dark:border-gray-600">
         <div className="flex items-center gap-2 text-xs">
           {(data as NetworkNodeData).isTailscale && (
             <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-300">
