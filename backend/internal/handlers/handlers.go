@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"time"
 
@@ -29,6 +30,7 @@ func (h *Handlers) HealthCheck(c *gin.Context) {
 func (h *Handlers) GetDevices(c *gin.Context) {
 	devices, err := h.tailscaleService.GetDevices()
 	if err != nil {
+		log.Printf("ERROR GetDevices failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to fetch devices",
 			"message": err.Error(),
@@ -36,6 +38,7 @@ func (h *Handlers) GetDevices(c *gin.Context) {
 		return
 	}
 
+	log.Printf("SUCCESS GetDevices: returned devices successfully")
 	c.JSON(http.StatusOK, devices)
 }
 
@@ -51,6 +54,7 @@ func (h *Handlers) GetNetworkLogs(c *gin.Context) {
 
 	st, err := time.Parse(time.RFC3339, start)
 	if err != nil {
+		log.Printf("ERROR GetNetworkLogs: invalid start time %s: %v", start, err)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "bad start time",
 			"message": err.Error(),
@@ -60,6 +64,7 @@ func (h *Handlers) GetNetworkLogs(c *gin.Context) {
 
 	et, err := time.Parse(time.RFC3339, end)
 	if err != nil {
+		log.Printf("ERROR GetNetworkLogs: invalid end time %s: %v", end, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "bad end time", "message": err.Error()})
 		return
 	}
@@ -121,12 +126,14 @@ func (h *Handlers) GetNetworkLogs(c *gin.Context) {
 		return
 	}
 
+	log.Printf("SUCCESS GetNetworkLogs: returned logs for %s to %s", start, end)
 	c.JSON(http.StatusOK, logs)
 }
 
 func (h *Handlers) GetNetworkMap(c *gin.Context) {
 	networkMap, err := h.tailscaleService.GetNetworkMap()
 	if err != nil {
+		log.Printf("ERROR GetNetworkMap failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to fetch network map",
 			"message": err.Error(),
@@ -134,6 +141,7 @@ func (h *Handlers) GetNetworkMap(c *gin.Context) {
 		return
 	}
 
+	log.Printf("SUCCESS GetNetworkMap: returned network map")
 	c.JSON(http.StatusOK, networkMap)
 }
 

@@ -13,8 +13,19 @@ import (
 	"github.com/rajsinghtech/tsflow/backend/internal/config"
 	"github.com/rajsinghtech/tsflow/backend/internal/utils"
 	tailscale "tailscale.com/client/tailscale/v2"
+	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 )
+
+type secFetchSiteTransport struct {
+	rt http.RoundTripper
+}
+
+func (t *secFetchSiteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	req.Header.Set("Sec-Fetch-Mode", "cors")
+	return t.rt.RoundTrip(req)
+}
 
 type TailscaleService struct {
 	apiKey      string
@@ -78,8 +89,17 @@ func NewTailscaleService(cfg *config.Config) *TailscaleService {
 			Scopes:       cfg.TailscaleOAuthScopes,
 			TokenURL:     cfg.TailscaleAPIURL + "/oauth/token",
 		}
-		oauthClient := ts.oauthConfig.Client(context.Background())
-		oauthClient.Timeout = 5 * time.Minute
+		
+		// Create custom transport to add required headers
+		transport := &http.Transport{}
+		httpClient := &http.Client{
+			Transport: &secFetchSiteTransport{rt: transport},
+			Timeout:   5 * time.Minute,
+		}
+		
+		// Create context with custom HTTP client
+		ctx := context.WithValue(context.Background(), oauth2.HTTPClient, httpClient)
+		oauthClient := ts.oauthConfig.Client(ctx)
 		
 		ts.tsClient = &tailscale.Client{
 			HTTP:     oauthClient,
