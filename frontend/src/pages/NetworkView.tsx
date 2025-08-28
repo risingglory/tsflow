@@ -14,6 +14,7 @@ interface TailscaleDevice {
   addresses: string[]
   os: string
   tags?: string[]
+  user?: string
   lastSeen: string
 }
 
@@ -27,6 +28,7 @@ interface NetworkNode {
   rxBytes: number
   connections: number
   tags: string[]
+  user?: string
   isTailscale: boolean
   ips?: string[] // Track all IPs for merged devices
   incomingPorts: Set<number> // Ports this device receives traffic on
@@ -137,6 +139,11 @@ const getDeviceName = (ip: string, devices: TailscaleDevice[] = []): string => {
     return shortName || device.name
   }
   return ip
+}
+
+// Helper function to get device data from IP
+const getDeviceData = (ip: string, devices: TailscaleDevice[] = []): TailscaleDevice | null => {
+  return devices.find(d => d.addresses.includes(ip)) || null
 }
 
 
@@ -278,6 +285,13 @@ const NetworkView: React.FC = () => {
         const srcNodeId = srcDeviceName !== srcIP ? srcDeviceName : srcIP
         if (!nodeMap.has(srcNodeId)) {
           const isTailscale = categorizeIP(srcIP).includes('tailscale')
+          const deviceData = getDeviceData(srcIP, devices)
+          
+          // Combine IP-derived tags with device tags
+          const ipTags = categorizeIP(srcIP)
+          const deviceTags = deviceData?.tags || []
+          const allTags = [...ipTags, ...deviceTags].filter((tag, index, arr) => arr.indexOf(tag) === index)
+          
           nodeMap.set(srcNodeId, {
             id: srcNodeId,
             ip: srcIP,
@@ -287,7 +301,8 @@ const NetworkView: React.FC = () => {
             txBytes: 0,
             rxBytes: 0,
             connections: 0,
-            tags: categorizeIP(srcIP),
+            tags: allTags,
+            user: deviceData?.user,
             isTailscale,
             ips: [srcIP],
             incomingPorts: new Set<number>(),
@@ -301,11 +316,20 @@ const NetworkView: React.FC = () => {
             existingNode.ips = [...(existingNode.ips || []), srcIP]
             // Update tags to include IPv6 if this IP is IPv6
             const newTags = categorizeIP(srcIP)
-            newTags.forEach(tag => {
+            const deviceData = getDeviceData(srcIP, devices)
+            const deviceTags = deviceData?.tags || []
+            const combinedTags = [...newTags, ...deviceTags]
+            
+            combinedTags.forEach(tag => {
               if (!existingNode.tags.includes(tag)) {
                 existingNode.tags.push(tag)
               }
             })
+            
+            // Update user if not already set
+            if (!existingNode.user && deviceData?.user) {
+              existingNode.user = deviceData.user
+            }
           }
         }
         
@@ -314,6 +338,13 @@ const NetworkView: React.FC = () => {
         const dstNodeId = dstDeviceName !== dstIP ? dstDeviceName : dstIP
         if (!nodeMap.has(dstNodeId)) {
           const isTailscale = categorizeIP(dstIP).includes('tailscale')
+          const deviceData = getDeviceData(dstIP, devices)
+          
+          // Combine IP-derived tags with device tags
+          const ipTags = categorizeIP(dstIP)
+          const deviceTags = deviceData?.tags || []
+          const allTags = [...ipTags, ...deviceTags].filter((tag, index, arr) => arr.indexOf(tag) === index)
+          
           nodeMap.set(dstNodeId, {
             id: dstNodeId,
             ip: dstIP,
@@ -323,7 +354,8 @@ const NetworkView: React.FC = () => {
             txBytes: 0,
             rxBytes: 0,
             connections: 0,
-            tags: categorizeIP(dstIP),
+            tags: allTags,
+            user: deviceData?.user,
             isTailscale,
             ips: [dstIP],
             incomingPorts: new Set<number>(),
@@ -337,11 +369,20 @@ const NetworkView: React.FC = () => {
             existingNode.ips = [...(existingNode.ips || []), dstIP]
             // Update tags to include IPv6 if this IP is IPv6
             const newTags = categorizeIP(dstIP)
-            newTags.forEach(tag => {
+            const deviceData = getDeviceData(dstIP, devices)
+            const deviceTags = deviceData?.tags || []
+            const combinedTags = [...newTags, ...deviceTags]
+            
+            combinedTags.forEach(tag => {
               if (!existingNode.tags.includes(tag)) {
                 existingNode.tags.push(tag)
               }
             })
+            
+            // Update user if not already set
+            if (!existingNode.user && deviceData?.user) {
+              existingNode.user = deviceData.user
+            }
           }
         }
 
@@ -424,15 +465,56 @@ const NetworkView: React.FC = () => {
   // Apply filters
   const filteredData = useMemo(() => {
     let filteredNodes = nodes.filter(node => {
-      // Search filter (search both IP and display name)
-      if (searchQuery && !node.ip.toLowerCase().includes(searchQuery.toLowerCase()) && 
-          !node.displayName.toLowerCase().includes(searchQuery.toLowerCase())) {
-        return false
+      // Enhanced search filter with tag:, user@, and ip: support
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase().trim()
+        
+        // Check for tag: search
+        if (query.startsWith('tag:')) {
+          const tagSearch = query.substring(4)
+          const nodeTagsLower = node.tags.map(tag => tag.toLowerCase().replace('tag:', ''))
+          if (!nodeTagsLower.some(tag => tag.includes(tagSearch))) {
+            return false
+          }
+        }
+        // Check for ip: search
+        else if (query.startsWith('ip:')) {
+          const ipSearch = query.substring(3)
+          const allIPs = node.ips || [node.ip]
+          if (!allIPs.some(ip => ip.toLowerCase().includes(ipSearch))) {
+            return false
+          }
+        }
+        // Check for user@ search  
+        else if (query.includes('@') && query.includes('user')) {
+          const userSearch = query.replace('user@', '').replace('user:', '')
+          if (!node.user || !node.user.toLowerCase().includes(userSearch)) {
+            return false
+          }
+        }
+        // Regular search (IP, display name, user, or tags)
+        else {
+          const allIPs = node.ips || [node.ip]
+          const matchesIP = allIPs.some(ip => ip.toLowerCase().includes(query))
+          const matchesName = node.displayName.toLowerCase().includes(query)
+          const matchesUser = node.user?.toLowerCase().includes(query) || false
+          const matchesTags = node.tags.some(tag => 
+            tag.toLowerCase().replace('tag:', '').includes(query)
+          )
+          
+          if (!matchesIP && !matchesName && !matchesUser && !matchesTags) {
+            return false
+          }
+        }
       }
 
-      // IP category filter
-      if (ipCategoryFilters.size > 0 && !node.tags.some(tag => ipCategoryFilters.has(tag))) {
-        return false
+      // IP category filter (only for basic IP types, not device tags)
+      if (ipCategoryFilters.size > 0) {
+        const ipTypes = ['tailscale', 'private', 'public', 'derp']
+        const nodeIpTypes = node.tags.filter(tag => ipTypes.includes(tag))
+        if (!nodeIpTypes.some(tag => ipCategoryFilters.has(tag))) {
+          return false
+        }
       }
 
       // IP version filter (IPv4/IPv6)
@@ -553,7 +635,12 @@ const NetworkView: React.FC = () => {
 
   const dataProtocols = Array.from(new Set(links.map(l => l.protocol)))
   const dataTrafficTypes = Array.from(new Set(links.map(l => l.trafficType)))
-  const dataIpCategories = Array.from(new Set(nodes.flatMap(n => n.tags).filter(tag => tag !== 'ipv6')))
+  // Only include basic IP types, not device tags
+  const dataIpCategories = Array.from(new Set(
+    nodes.flatMap(n => n.tags).filter(tag => 
+      ['tailscale', 'private', 'public', 'derp'].includes(tag)
+    )
+  ))
 
   const uniqueProtocols = Array.from(new Set([...baseProtocols, ...dataProtocols]))
   const uniqueTrafficTypes = Array.from(new Set([...baseTrafficTypes, ...dataTrafficTypes]))
@@ -688,11 +775,17 @@ const NetworkView: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Search</label>
               <input
                 type="text"
-                placeholder="Search devices or IPs..."
+                placeholder="Search devices, tag:k8s, ip:100.88, user@github..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
               />
+              <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                <div>• <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">tag:k8s</code> - Find devices with specific tags</div>
+                <div>• <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">ip:100.88</code> - Find devices by IP address</div>
+                <div>• <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">user@github</code> - Find devices by user</div>
+                <div>• Regular text searches device names, IPs, and tags</div>
+              </div>
           </div>
           
             {/* Time Range */}

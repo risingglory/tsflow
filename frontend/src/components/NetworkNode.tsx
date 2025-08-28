@@ -190,14 +190,10 @@ const NetworkNode = memo<NodeProps>(({ data, selected }) => {
       </header>
 
       {/* User/Identity section */}
-      {(data as NetworkNodeData).user ? (
+      {(data as NetworkNodeData).user && (
         <div className="flex items-center gap-1 mb-3 text-xs">
           <span className="text-indigo-600">👤</span>
           <span className="font-medium text-indigo-600 truncate">{(data as NetworkNodeData).user}</span>
-        </div>
-      ) : processedData.deviceTags.length > 0 && (
-        <div className="text-xs text-gray-600 mb-3 truncate">
-          {processedData.deviceTags.slice(0, 2).map(tag => `tag:${tag}`).join(' ')}
         </div>
       )}
 
