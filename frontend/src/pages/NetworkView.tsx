@@ -129,9 +129,36 @@ const categorizeIP = (ip: string): string[] => {
 }
 
 
+// Helper function to normalize IPv6 addresses for comparison
+const normalizeIPv6 = (ip: string): string => {
+  // Remove brackets if present
+  const cleaned = ip.replace(/^\[|\]$/g, '')
+  
+  // For IPv6, we need to handle different representations of the same address
+  // This is a simplified normalization - in production you might want a more robust solution
+  return cleaned.toLowerCase()
+}
+
+// Helper function to check if two IPs match, accounting for IPv6 variations
+const ipMatches = (ip1: string, ip2: string): boolean => {
+  // Direct match first
+  if (ip1 === ip2) return true
+  
+  // For IPv6 addresses, normalize and compare
+  if (ip1.includes(':') || ip2.includes(':')) {
+    const normalized1 = normalizeIPv6(ip1)
+    const normalized2 = normalizeIPv6(ip2)
+    return normalized1 === normalized2
+  }
+  
+  return false
+}
+
 // Helper function to get device name from IP
 const getDeviceName = (ip: string, devices: TailscaleDevice[] = []): string => {
-  const device = devices.find(d => d.addresses.includes(ip))
+  const device = devices.find(d => 
+    d.addresses.some(addr => ipMatches(ip, addr))
+  )
   if (device) {
     // Extract just the device name part before the first dot
     // e.g. "kartiks-macbook-pro.keiretsu.ts.net" -> "kartiks-macbook-pro"
@@ -143,7 +170,9 @@ const getDeviceName = (ip: string, devices: TailscaleDevice[] = []): string => {
 
 // Helper function to get device data from IP
 const getDeviceData = (ip: string, devices: TailscaleDevice[] = []): TailscaleDevice | null => {
-  return devices.find(d => d.addresses.includes(ip)) || null
+  return devices.find(d => 
+    d.addresses.some(addr => ipMatches(ip, addr))
+  ) || null
 }
 
 

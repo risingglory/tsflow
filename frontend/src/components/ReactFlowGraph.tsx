@@ -32,6 +32,7 @@ import NetworkNode, { NetworkNodeData } from './NetworkNode';
 import NetworkEdge, { NetworkLinkData } from './NetworkEdge';
 import { useElkLayout } from '../hooks/useElkLayout';
 import { useForceLayout } from '../hooks/useForceLayout';
+import { useTheme } from '../contexts/ThemeContext';
 
 // Original interfaces from the D3 version
 interface OriginalNetworkNode {
@@ -144,6 +145,7 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
   selectedNode,
   selectedLink,
 }) => {
+  const { effectiveTheme } = useTheme();
   const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
   const [_isLayouting, setIsLayouting] = useState(false);
@@ -249,11 +251,8 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
             reactFlowNodes,
             reactFlowEdges,
             {
-              direction: 'DOWN',
-              nodeSpacing: 250, // Further increased to prevent overlap
-              layerSpacing: 300, // Further increased for vertical spacing
-              algorithm: 'layered',
-              aspectRatio: 1.8,
+              nodeSpacing: 200, // Reasonable spacing
+              algorithm: 'layered', // Back to layered with clustering optimizations
             }
           );
 
@@ -562,7 +561,7 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
         className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800"
       >
         <Background 
-          color="#e5e7eb" 
+          color={effectiveTheme === 'dark' ? '#374151' : '#e5e7eb'} 
           gap={20}
           size={1}
           variant={BackgroundVariant.Dots}
@@ -577,16 +576,19 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
             if (data?.tags?.includes('private')) return '#10b981';
             return '#f59e0b';
           }}
-          maskColor="rgba(255, 255, 255, 0.2)"
+          maskColor={effectiveTheme === 'dark' ? 'rgba(17, 24, 39, 0.8)' : 'rgba(255, 255, 255, 0.2)'}
+          style={{
+            backgroundColor: effectiveTheme === 'dark' ? '#1f2937' : '#f9fafb',
+          }}
           position="bottom-right"
           pannable
           zoomable
         />
 
         {/* Enhanced Statistics Panel */}
-        <Panel position="top-left" className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-3 border">
-          <h4 className="text-sm font-semibold mb-2 text-gray-700">Network Overview</h4>
-          <div className="space-y-1 text-xs text-gray-600">
+        <Panel position="top-left" className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-lg p-3 border border-gray-200 dark:border-gray-700">
+          <h4 className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Network Overview</h4>
+          <div className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
             <div className="flex justify-between">
               <span>Nodes:</span>
               <span className="font-medium">{trafficStats.nodeCount}</span>
@@ -599,36 +601,36 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
               <span>Total Traffic:</span>
               <span className="font-medium">{formatBytes(trafficStats.totalBytes)}</span>
             </div>
-            <div className="text-xs text-gray-500 mt-1">
+            <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
               Last updated: {new Date(lastUpdateTime).toLocaleTimeString()}
             </div>
           </div>
         </Panel>
 
         {/* Enhanced Legend Panel */}
-        <Panel position="bottom-left" className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-3 border">
-          <h4 className="text-sm font-semibold mb-2 text-gray-700">Traffic Types</h4>
+        <Panel position="bottom-left" className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-lg p-3 border border-gray-200 dark:border-gray-700">
+          <h4 className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Traffic Types</h4>
           <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <div className="w-6 h-0.5 bg-blue-500 rounded"></div>
                 <span>Virtual</span>
               </div>
-              <span className="text-gray-500">{formatBytes(trafficStats.virtualBytes)}</span>
+              <span className="text-gray-500 dark:text-gray-400">{formatBytes(trafficStats.virtualBytes)}</span>
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <div className="w-6 h-0.5 bg-green-500 rounded"></div>
                 <span>Subnet</span>
               </div>
-              <span className="text-gray-500">{formatBytes(trafficStats.subnetBytes)}</span>
+              <span className="text-gray-500 dark:text-gray-400">{formatBytes(trafficStats.subnetBytes)}</span>
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <div className="w-6 h-0.5 bg-yellow-500 rounded" style={{borderStyle: 'dashed'}}></div>
                 <span>Physical</span>
               </div>
-              <span className="text-gray-500">{formatBytes(trafficStats.physicalBytes)}</span>
+              <span className="text-gray-500 dark:text-gray-400">{formatBytes(trafficStats.physicalBytes)}</span>
             </div>
           </div>
         </Panel>

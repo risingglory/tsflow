@@ -3,15 +3,20 @@ import { Node, Edge } from '@xyflow/react';
 import ELK, { ElkNode, LayoutOptions, ElkExtendedEdge } from 'elkjs/lib/elk.bundled.js';
 
 export interface ElkLayoutOptions {
-  direction?: 'DOWN' | 'UP' | 'LEFT' | 'RIGHT';
   nodeSpacing?: number;
-  layerSpacing?: number;
   algorithm?: 'layered' | 'stress' | 'mrtree' | 'radial' | 'force' | 'disco';
-  aspectRatio?: number;
-  considerModelOrder?: boolean;
-  cycleBreaking?: 'GREEDY' | 'INTERACTIVE' | 'MODEL_ORDER';
-  crossingMinimization?: 'LAYER_SWEEP' | 'INTERACTIVE' | 'GREEDY_SWITCH';
-  nodePlacement?: 'BRANDES_KOEPF' | 'NETWORK_SIMPLEX' | 'LINEAR_SEGMENTS';
+  // Force algorithm options
+  forceModel?: 'EADES' | 'FRUCHTERMAN_REINGOLD';
+  iterations?: number;
+  repulsivePower?: number;
+  temperature?: number;
+  randomSeed?: number;
+  // Stress algorithm options
+  desiredEdgeLength?: number;
+  stressEpsilon?: number;
+  // DisCo algorithm options
+  componentsSpacing?: number;
+  compactionStrategy?: 'POLYOMINO';
 }
 
 interface UseElkLayoutReturn {
@@ -22,87 +27,118 @@ interface UseElkLayoutReturn {
   ) => Promise<{ nodes: Node[]; edges: Edge[] }>;
 }
 
-const DEFAULT_NODE_WIDTH = 200;
-const DEFAULT_NODE_HEIGHT = 120;
-const MIN_NODE_WIDTH = 150;
-const MIN_NODE_HEIGHT = 80;
-const MAX_NODE_WIDTH = 400;
-const MAX_NODE_HEIGHT = 300;
+const DEFAULT_NODE_WIDTH = 280;
+const DEFAULT_NODE_HEIGHT = 140;
+const MIN_NODE_WIDTH = 240;
+const MIN_NODE_HEIGHT = 120;
 
 export const useElkLayout = (): UseElkLayoutReturn => {
   const elkInstance = useRef(new ELK());
   
   // Memoize default options to prevent recreating on every call
   const defaultOptions = useMemo<ElkLayoutOptions>(() => ({
-    direction: 'DOWN',
-    nodeSpacing: 250, // Further increased to prevent any overlap
-    layerSpacing: 300, // Further increased for better vertical spacing
-    algorithm: 'layered',
-    aspectRatio: 1.6, // Slightly more compact aspect ratio
-    considerModelOrder: true,
-    cycleBreaking: 'GREEDY',
-    crossingMinimization: 'LAYER_SWEEP',
-    nodePlacement: 'NETWORK_SIMPLEX',
+    nodeSpacing: 200, // Reasonable spacing between nodes
+    algorithm: 'layered', // Back to layered with better clustering
   }), []);
 
-  // Enhanced node dimension calculation with better heuristics
+  // Enhanced node dimension calculation with dynamic text measurement
   const calculateNodeDimensions = useCallback((node: Node) => {
+    if (node.width && node.height) {
+      // Use dimensions from React Flow if available (set by the component)
+      return { width: node.width, height: node.height };
+    }
+    
     let width = DEFAULT_NODE_WIDTH;
     let height = DEFAULT_NODE_HEIGHT;
 
     if (node.data) {
       const data = node.data as any;
       
+      // Create temporary canvas for text measurement
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return { width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT };
+      
+      ctx.font = '14px Inter, system-ui, sans-serif';
+      
       // Base width calculation from display name
       const displayName = data.displayName || data.id || '';
-      const baseWidth = Math.max(MIN_NODE_WIDTH, displayName.length * 8 + 40);
+      const nameWidth = ctx.measureText(displayName).width;
+      const baseWidth = Math.max(MIN_NODE_WIDTH, nameWidth + 120); // Add space for traffic info
       
-      // Calculate height based on content density
-      let contentHeight = 60; // Base header height
+      let maxWidth = baseWidth;
+      let contentHeight = 60; // Base header height with margins
       
-      // IP addresses contribution
-      const ipv4Count = data.ipv4Addresses?.length || (data.ips ? data.ips.filter((ip: string) => !ip.includes(':')).length : 1);
-      const ipv6Count = data.ipv6Addresses?.length || (data.ips ? data.ips.filter((ip: string) => ip.includes(':')).length : 0);
-      contentHeight += (ipv4Count + ipv6Count) * 16;
+      // Calculate IP addresses width and height
+      const allIPs = data.ips || [data.ip];
+      const ipv4Addresses = allIPs.filter((ip: string) => !ip.includes(':'));
+      const ipv6Addresses = allIPs.filter((ip: string) => ip.includes(':'));
       
-      // Ports contribution (grid layout)
-      const incomingPorts = data.incomingPorts?.size || 0;
-      const outgoingPorts = data.outgoingPorts?.size || 0;
-      const totalPorts = Math.min(incomingPorts + outgoingPorts, 20); // Limit display
-      if (totalPorts > 0) {
-        const portsPerRow = Math.min(8, Math.ceil(Math.sqrt(totalPorts) * 1.4));
-        const portRows = Math.ceil(totalPorts / portsPerRow);
-        contentHeight += portRows * 18 + 10;
-      }
+      ipv4Addresses.forEach((ip: string) => {
+        const ipText = `IPv4: ${ip}`;
+        maxWidth = Math.max(maxWidth, ctx.measureText(ipText).width + 40);
+      });
+      
+      ipv6Addresses.forEach((ip: string) => {
+        const displayIp = ip.length > 25 ? `${ip.substring(0, 22)}...` : ip;
+        const ipText = `IPv6: ${displayIp}`;
+        maxWidth = Math.max(maxWidth, ctx.measureText(ipText).width + 40);
+      });
+      
+      contentHeight += (ipv4Addresses.length + ipv6Addresses.length) * 20;
       
       // Protocols contribution
       const protocolCount = data.protocols?.size || 0;
       if (protocolCount > 0) {
-        contentHeight += 16;
+        const protocolText = Array.from(data.protocols || []).join(', ');
+        maxWidth = Math.max(maxWidth, ctx.measureText(`📡 ${protocolText}`).width + 40);
+        contentHeight += 20;
       }
       
-      // Tags contribution
-      const tagCount = (data.tags || []).filter((tag: string) => tag?.startsWith('tag:')).length;
-      if (tagCount > 0) {
-        const tagsPerRow = Math.min(3, tagCount);
-        const tagRows = Math.ceil(tagCount / tagsPerRow);
-        contentHeight += tagRows * 22 + 8;
+      // Ports contribution - calculate based on wrapping
+      const incomingPorts = data.incomingPorts?.size || 0;
+      const outgoingPorts = data.outgoingPorts?.size || 0;
+      const totalPorts = Math.min(incomingPorts + outgoingPorts, 20);
+      if (totalPorts > 0) {
+        const avgPortWidth = 75; // Average width of port badges
+        const estimatedWidth = Math.max(maxWidth, 300);
+        const portsPerRow = Math.max(1, Math.floor(estimatedWidth / avgPortWidth));
+        const portRows = Math.ceil(totalPorts / portsPerRow);
+        contentHeight += (portRows * 30) + 15;
+      }
+      
+      // Tags contribution - calculate based on wrapping with full tag names
+      const deviceTags = (data.tags || [])
+        .filter((tag: string) => tag && tag.startsWith('tag:'))
+        .slice(0, 8); // Keep full tag names
+      
+      if (deviceTags.length > 0) {
+        let maxTagWidth = 0;
+        deviceTags.forEach((tag: string) => {
+          const tagWidth = ctx.measureText(tag).width + 20; // Full tag:name needs more padding
+          maxTagWidth = Math.max(maxTagWidth, tagWidth);
+        });
+        const avgTagWidth = 120; // Increased for full tag names
+        const estimatedWidth = Math.max(maxWidth, 350);
+        const tagsPerRow = Math.max(1, Math.floor(estimatedWidth / avgTagWidth));
+        const tagRows = Math.ceil(deviceTags.length / tagsPerRow);
+        contentHeight += (tagRows * 32) + 15;
       }
       
       // User information
       if (data.user) {
-        contentHeight += 20;
+        const userText = `👤 ${data.user}`;
+        maxWidth = Math.max(maxWidth, ctx.measureText(userText).width + 40);
+        contentHeight += 25;
       }
       
       // Footer
-      contentHeight += 25;
+      contentHeight += 40;
       
-      width = Math.max(baseWidth, MIN_NODE_WIDTH);
+      width = Math.max(maxWidth, MIN_NODE_WIDTH);
       height = Math.max(contentHeight, MIN_NODE_HEIGHT);
       
-      // Apply constraints
-      width = Math.min(width, MAX_NODE_WIDTH);
-      height = Math.min(height, MAX_NODE_HEIGHT);
+      // No maximum constraints - fully dynamic sizing
       
       // Adjust for high-traffic or high-connection nodes
       if (data.totalBytes > 1000000) { // 1MB+
@@ -133,33 +169,42 @@ export const useElkLayout = (): UseElkLayoutReturn => {
       // Merge options with defaults
       const layoutOptions: ElkLayoutOptions = { ...defaultOptions, ...options };
 
-      // Convert layout options to ELK format with enhanced spacing
+      // Convert layout options to ELK format - dynamic based on algorithm
       const elkOptions: LayoutOptions = {
         'elk.algorithm': layoutOptions.algorithm!,
-        'elk.direction': layoutOptions.direction!,
         'elk.spacing.nodeNode': layoutOptions.nodeSpacing!.toString(),
-        'elk.layered.spacing.nodeNodeBetweenLayers': layoutOptions.layerSpacing!.toString(),
-        'elk.layered.crossingMinimization.strategy': layoutOptions.crossingMinimization!,
-        'elk.layered.nodePlacement.strategy': layoutOptions.nodePlacement!,
-        'elk.layered.cycleBreaking.strategy': layoutOptions.cycleBreaking!,
-        'elk.aspectRatio': layoutOptions.aspectRatio!.toString(),
-        'elk.layered.considerModelOrder.strategy': layoutOptions.considerModelOrder! ? 'NODES_AND_EDGES' : 'NONE',
-        'elk.layered.thoroughness': '10', // Increased from 7 to 10 for better quality
-        'elk.layered.unnecessaryBendpoints': 'false',
-        'elk.layered.nodePlacement.favorStraightEdges': 'false', // Allow curves for better flow
-        'elk.layered.spacing.edgeNodeBetweenLayers': '75', // Further increased to prevent overlap
-        'elk.layered.spacing.edgeEdgeBetweenLayers': '50', // Further increased
-        'elk.spacing.edgeNode': '80', // Further increased
-        'elk.spacing.edgeEdge': '60', // Further increased
-        'elk.spacing.componentComponent': '100', // Add spacing between disconnected components
-        'elk.portConstraints': 'FIXED_SIDE', // Use FIXED_SIDE for more predictable routing
-        'elk.edgeRouting': 'SPLINES', // Changed from ORTHOGONAL to SPLINES for curves
-        'elk.layered.compaction.connectedComponents': 'true',
-        'elk.layered.compaction.postCompaction.strategy': 'NONE', // Disable post-compaction to maintain spacing
-        'elk.layered.spacing.baseValue': '75', // Increased base spacing
+        'elk.spacing.componentComponent': (layoutOptions.componentsSpacing || 300).toString(), // Configurable cluster separation
         'elk.separateConnectedComponents': 'true', // Ensure components are separated
         'elk.padding': '[top=50,left=50,bottom=50,right=50]', // Add padding around the graph
+        'elk.edgeRouting': 'SPLINES', // Smooth curves for network connections
       };
+
+      // Add algorithm-specific options
+      if (layoutOptions.algorithm === 'stress') {
+        elkOptions['elk.stress.desiredEdgeLength'] = layoutOptions.desiredEdgeLength!.toString();
+        elkOptions['elk.stress.epsilon'] = layoutOptions.stressEpsilon!.toString();
+        elkOptions['elk.stress.iterationLimit'] = layoutOptions.iterations!.toString();
+      } else if (layoutOptions.algorithm === 'force') {
+        elkOptions['elk.force.model'] = layoutOptions.forceModel!;
+        elkOptions['elk.force.iterations'] = layoutOptions.iterations!.toString();
+        elkOptions['elk.force.repulsivePower'] = layoutOptions.repulsivePower!.toString();
+        elkOptions['elk.force.temperature'] = layoutOptions.temperature!.toString();
+        elkOptions['elk.randomSeed'] = layoutOptions.randomSeed!.toString();
+      } else if (layoutOptions.algorithm === 'disco') {
+        elkOptions['elk.disco.componentsSpacing'] = layoutOptions.componentsSpacing!.toString();
+        elkOptions['elk.disco.componentCompaction.strategy'] = layoutOptions.compactionStrategy!;
+      } else if (layoutOptions.algorithm === 'layered') {
+        // Layered with clustering-friendly settings
+        elkOptions['elk.direction'] = 'DOWN';
+        elkOptions['elk.layered.spacing.nodeNodeBetweenLayers'] = '350';
+        elkOptions['elk.layered.crossingMinimization.strategy'] = 'LAYER_SWEEP';
+        elkOptions['elk.layered.nodePlacement.strategy'] = 'NETWORK_SIMPLEX';
+        elkOptions['elk.layered.cycleBreaking.strategy'] = 'GREEDY';
+        elkOptions['elk.layered.considerModelOrder.strategy'] = 'NODES_AND_EDGES';
+        elkOptions['elk.layered.thoroughness'] = '15';
+        elkOptions['elk.layered.compaction.connectedComponents'] = 'true';
+        elkOptions['elk.layered.compaction.postCompaction.strategy'] = 'NONE';
+      }
 
       // Create ELK graph with enhanced node data
       const elkGraph: ElkNode = {
@@ -171,44 +216,14 @@ export const useElkLayout = (): UseElkLayoutReturn => {
             id: node.id,
             width: dimensions.width,
             height: dimensions.height,
-            // Add ports for better edge routing
-            ports: [
-              {
-                id: `${node.id}-port-north`,
-                layoutOptions: {
-                  'elk.port.side': 'NORTH',
-                },
-              },
-              {
-                id: `${node.id}-port-south`,
-                layoutOptions: {
-                  'elk.port.side': 'SOUTH',
-                },
-              },
-              {
-                id: `${node.id}-port-west`,
-                layoutOptions: {
-                  'elk.port.side': 'WEST',
-                },
-              },
-              {
-                id: `${node.id}-port-east`,
-                layoutOptions: {
-                  'elk.port.side': 'EAST',
-                },
-              },
-            ],
+            // Force algorithm doesn't need fixed ports - let it position naturally
           };
         }),
         edges: edges.map((edge): ElkExtendedEdge => ({
           id: edge.id,
           sources: [edge.source],
           targets: [edge.target],
-          // Add edge properties for better routing
-          layoutOptions: {
-            'elk.layered.priority.direction': 
-              edge.data && (edge.data as any).trafficType === 'virtual' ? '10' : '5',
-          },
+          // Force algorithm handles edge routing naturally
         })),
       };
 
@@ -281,7 +296,7 @@ export const useElkLayout = (): UseElkLayoutReturn => {
           const maxNodeWidth = Math.max(...nodes.map(n => calculateNodeDimensions(n).width));
           const maxNodeHeight = Math.max(...nodes.map(n => calculateNodeDimensions(n).height));
           const horizontalSpacing = maxNodeWidth + (layoutOptions.nodeSpacing || 250);
-          const verticalSpacing = maxNodeHeight + (layoutOptions.layerSpacing || 300);
+          const verticalSpacing = maxNodeHeight + (layoutOptions.nodeSpacing || 300);
           
           const layoutedNodes = nodes.map((node, index) => {
             return {
@@ -300,8 +315,8 @@ export const useElkLayout = (): UseElkLayoutReturn => {
         const cols = Math.ceil(nodes.length / rows);
         const maxNodeWidth = Math.max(...nodes.map(n => calculateNodeDimensions(n).width));
         const maxNodeHeight = Math.max(...nodes.map(n => calculateNodeDimensions(n).height));
-        const horizontalSpacing = maxNodeWidth + (layoutOptions.nodeSpacing || 250);
-        const verticalSpacing = maxNodeHeight + (layoutOptions.layerSpacing || 300);
+        const horizontalSpacing = maxNodeWidth + (layoutOptions.nodeSpacing || 400);
+        const verticalSpacing = maxNodeHeight + (layoutOptions.nodeSpacing || 450);
         
         const layoutedNodes = nodes.map((node, index) => {
           const row = Math.floor(index / cols);

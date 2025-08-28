@@ -166,26 +166,26 @@ const NetworkEdge = memo<EdgeProps>(({
             }}
             className="nodrag nopan"
           >
-            <div className="bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg shadow-lg p-3 min-w-[120px]">
+            <div className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 min-w-[120px]">
               {/* Main traffic info */}
               <div className="flex items-center justify-between mb-2">
                 <span className="font-bold text-sm" style={{ color: edgeStyle.color }}>
                   {formattedData.bytes}
                 </span>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
                   {trafficTypeProps.icon}
                 </span>
               </div>
               
               {/* Traffic type and protocol */}
-              <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+              <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 mb-2">
                 <span className="font-medium">{formattedData.protocol}</span>
                 <span>{trafficTypeProps.label}</span>
               </div>
               
               {/* Packet count */}
               {formattedData.packets !== '0' && (
-                <div className="text-xs text-gray-500 mb-2">
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                   📦 {formattedData.packets} packets
                 </div>
               )}
@@ -193,19 +193,19 @@ const NetworkEdge = memo<EdgeProps>(({
               {/* Traffic direction indicator */}
               {(data as NetworkLinkData).txBytes > 0 || (data as NetworkLinkData).rxBytes > 0 ? (
                 <div className="space-y-1">
-                  <div className="text-xs text-gray-500">Traffic Flow:</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Traffic Flow:</div>
                   <div className="flex items-center gap-1 text-xs">
-                    <span className="text-blue-600">
+                    <span className="text-blue-600 dark:text-blue-400">
                       ↑ {formatBytes((data as NetworkLinkData).txBytes)}
                     </span>
-                    <span className="text-gray-400">|</span>
-                    <span className="text-green-600">
+                    <span className="text-gray-400 dark:text-gray-500">|</span>
+                    <span className="text-green-600 dark:text-green-400">
                       ↓ {formatBytes((data as NetworkLinkData).rxBytes)}
                     </span>
                   </div>
                   
                   {/* Visual traffic ratio bar */}
-                  <div className="flex h-1 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="flex h-1 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
                     <div 
                       className="bg-blue-500"
                       style={{ width: `${formattedData.txPercentage}%` }}
