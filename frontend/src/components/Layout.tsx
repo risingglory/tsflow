@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Network, Home, Menu, X, ZoomOut, FileText } from 'lucide-react'
+import { Network, Home, Menu, X, FileText } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { clsx } from 'clsx'
 import ThemeToggle from '@/components/ThemeToggle'
@@ -11,12 +11,11 @@ interface LayoutProps {
     linkCount: number
     timeRange?: string
   }
-  onResetZoom?: () => void
   onClearSelection?: () => void
   showNetworkActions?: boolean
 }
 
-export default function Layout({ children, networkStats, onResetZoom, onClearSelection, showNetworkActions }: LayoutProps) {
+export default function Layout({ children, networkStats, onClearSelection, showNetworkActions }: LayoutProps) {
   const location = useLocation()
   const { sidebarOpen, setSidebarOpen } = useAppStore()
 
@@ -31,7 +30,7 @@ export default function Layout({ children, networkStats, onResetZoom, onClearSel
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
+    <div className="h-screen bg-gray-50 dark:bg-gray-900 flex overflow-hidden">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -162,14 +161,6 @@ export default function Layout({ children, networkStats, onResetZoom, onClearSel
               {showNetworkActions && (
                 <>
                   <button
-                    onClick={onResetZoom}
-                    className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
-                    aria-label="Reset zoom to fit all nodes"
-                  >
-                    <ZoomOut className="w-4 h-4" aria-hidden="true" />
-                  </button>
-                  
-                  <button
                     onClick={onClearSelection}
                     className="px-3 py-2 text-sm bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500"
                   >
@@ -189,7 +180,7 @@ export default function Layout({ children, networkStats, onResetZoom, onClearSel
         </header>
 
         {/* Page content */}
-        <main className="flex-1 bg-gray-50 dark:bg-gray-900 overflow-auto">
+        <main className="flex-1 bg-gray-50 dark:bg-gray-900 overflow-hidden">
           {children}
         </main>
       </div>

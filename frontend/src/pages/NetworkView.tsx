@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react'
-import { RefreshCw, XCircle, ChevronLeft, ChevronRight, Sidebar } from 'lucide-react'
+import { RefreshCw, XCircle, ChevronLeft, Sidebar } from 'lucide-react'
 import useSWR from 'swr'
 import Layout from '@/components/Layout'
 import NetworkGraph from '@/components/NetworkGraph'
@@ -148,8 +148,6 @@ const NetworkView: React.FC = () => {
   
   // Sidebar visibility states
   const [leftSidebarVisible, setLeftSidebarVisible] = useState(true)
-  const [rightSidebarVisible, setRightSidebarVisible] = useState(true)
-  const [fullScreenMode, setFullScreenMode] = useState(false)
   
   // Custom time range states
   const [useCustomTimeRange, setUseCustomTimeRange] = useState(false)
@@ -188,6 +186,9 @@ const NetworkView: React.FC = () => {
       const now = new Date()
       let since: Date
       switch (timeRangeFilter) {
+        case '1m':
+          since = new Date(now.getTime() - 1 * 60 * 1000)
+          break
         case '5m':
           since = new Date(now.getTime() - 5 * 60 * 1000)
           break
@@ -250,29 +251,6 @@ const NetworkView: React.FC = () => {
     setLoading(false)
   }, [])
 
-  // Keyboard shortcuts for full-screen mode
-  useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.key === 'f' || e.key === 'F') {
-        setFullScreenMode(prev => {
-          const newValue = !prev
-          if (newValue) {
-            // Hide both sidebars for full-screen
-            setLeftSidebarVisible(false)
-            setRightSidebarVisible(false)
-          } else {
-            // Restore sidebars
-            setLeftSidebarVisible(true)
-            setRightSidebarVisible(true)
-          }
-          return newValue
-        })
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyPress)
-    return () => window.removeEventListener('keydown', handleKeyPress)
-  }, [])
   
   // Process network logs to create nodes and links
   const { nodes, links } = useMemo(() => {
@@ -559,10 +537,6 @@ const NetworkView: React.FC = () => {
     // Reset will be handled by the NetworkGraph component re-rendering
   }
 
-  const resetZoom = () => {
-    // Reset zoom will be handled within the NetworkGraph component
-    // This is a placeholder for now
-  }
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B'
@@ -615,7 +589,7 @@ const NetworkView: React.FC = () => {
   if (loading) {
     return (
       <Layout>
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="h-full bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
           <div className="text-center">
             <RefreshCw className="w-8 h-8 animate-spin text-blue-500 mx-auto mb-4" />
             <p className="text-gray-600 dark:text-gray-400">Loading network data...</p>
@@ -629,7 +603,7 @@ const NetworkView: React.FC = () => {
   if (deviceError || networkLogsError) {
     return (
       <Layout>
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="h-full bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
           <div className="text-center max-w-lg mx-auto p-6">
             <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
@@ -688,18 +662,26 @@ const NetworkView: React.FC = () => {
         linkCount: filteredData.links.length,
         timeRange: timeRangeFilter
       }}
-      onResetZoom={resetZoom}
       onClearSelection={resetAllFilters}
       showNetworkActions={true}
     >
-      <div className="flex h-full overflow-hidden relative">
+      <div className="flex h-full overflow-hidden">
 
         {/* Filters Sidebar */}
-        <div className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto flex-shrink-0 sticky top-0 h-screen transition-all duration-300 ${
-          leftSidebarVisible && !fullScreenMode ? 'w-80' : 'w-0'
+        <div className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto flex-shrink-0 h-full transition-all duration-300 ${
+          leftSidebarVisible ? 'w-80' : 'w-0'
         }`}>
-                      <div className={`p-6 ${leftSidebarVisible && !fullScreenMode ? 'block' : 'hidden'}`}>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Filters</h3>
+                      <div className={`p-6 ${leftSidebarVisible ? 'block' : 'hidden'}`}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Filters</h3>
+              <button
+                onClick={() => setLeftSidebarVisible(false)}
+                className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+                title="Hide filters"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            </div>
             
             {/* Search */}
             <div className="mb-6">
@@ -759,6 +741,7 @@ const NetworkView: React.FC = () => {
                     onChange={(e) => setTimeRangeFilter(e.target.value)}
                     className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   >
+                    <option value="1m">Last 1 Minute</option>
                     <option value="5m">Last 5 Minutes</option>
                     <option value="15m">Last 15 Minutes</option>
                     <option value="30m">Last 30 Minutes</option>
@@ -1014,245 +997,18 @@ const NetworkView: React.FC = () => {
             selectedLink={selectedLink}
           />
           
-          {/* Left Control Buttons */}
-          <div className="absolute left-2 top-4 z-10 flex flex-col space-y-2">
-            {/* Left Sidebar Toggle */}
-            {!fullScreenMode && (
+          {/* Left Control Buttons - Only show when sidebar is closed */}
+          {!leftSidebarVisible && (
+            <div className="absolute left-2 top-4 z-10 flex flex-col space-y-2">
               <button
-                onClick={() => setLeftSidebarVisible(!leftSidebarVisible)}
+                onClick={() => setLeftSidebarVisible(true)}
                 className="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                title={leftSidebarVisible ? "Hide filters" : "Show filters"}
+                title="Show filters"
               >
-                {leftSidebarVisible ? <ChevronLeft className="w-4 h-4" /> : <Sidebar className="w-4 h-4" />}
+                <Sidebar className="w-4 h-4" />
               </button>
-            )}
-          </div>
-
-          {/* Right Control Buttons */}
-          <div className="absolute right-2 top-4 z-10 flex flex-col space-y-2">
-            {/* Full-screen Toggle */}
-            <button
-              onClick={() => {
-                const newFullScreen = !fullScreenMode
-                setFullScreenMode(newFullScreen)
-                if (newFullScreen) {
-                  setLeftSidebarVisible(false)
-                  setRightSidebarVisible(false)
-                } else {
-                  setLeftSidebarVisible(true)
-                  setRightSidebarVisible(true)
-                }
-              }}
-              className="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              title={fullScreenMode ? "Exit full-screen (F)" : "Full-screen mode (F)"}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                {fullScreenMode ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9V4.5M9 9H4.5M9 9L3.5 3.5M15 15v4.5M15 15h4.5M15 15l5.5 5.5M15 9h4.5M15 9V4.5M15 9l5.5-5.5M9 15H4.5M9 15v4.5M9 15l-5.5 5.5" />
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                )}
-              </svg>
-            </button>
-            
-            {/* Right Sidebar Toggle */}
-            {!fullScreenMode && (
-              <button
-                onClick={() => setRightSidebarVisible(!rightSidebarVisible)}
-                className="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                title={rightSidebarVisible ? "Hide details" : "Show details"}
-              >
-                {rightSidebarVisible ? <ChevronRight className="w-4 h-4" /> : <Sidebar className="w-4 h-4" />}
-              </button>
-            )}
-          </div>
-        </div>
-            
-        {/* Details Sidebar */}
-        <div className={`bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 overflow-y-auto flex-shrink-0 sticky top-0 h-screen transition-all duration-300 ${
-          rightSidebarVisible && !fullScreenMode ? 'w-80' : 'w-0'
-        }`}>
-          <div className={`${rightSidebarVisible && !fullScreenMode ? 'block' : 'hidden'}`}>
-            {selectedNode && (
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Device Details</h3>
-              <div className="space-y-3">
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Device Name:</span>
-                  <p className="text-sm text-gray-900 dark:text-gray-100 font-mono break-all">{selectedNode.displayName}</p>
-                </div>
-                {selectedNode.displayName !== selectedNode.ip && (
-                <div>
-                    <span className="text-sm font-medium text-gray-500 dark:text-gray-400">IP Address:</span>
-                    <p className="text-sm text-gray-900 dark:text-gray-100 font-mono break-all">{selectedNode.ip}</p>
-                </div>
-                )}
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Traffic:</span>
-                  <p className="text-sm text-gray-900 dark:text-gray-100">{formatBytes(selectedNode.totalBytes)}</p>
-                </div>
-                  <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Transmitted:</span>
-                  <p className="text-sm text-gray-900 dark:text-gray-100">{formatBytes(selectedNode.txBytes)}</p>
-                  </div>
-                  <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Received:</span>
-                  <p className="text-sm text-gray-900 dark:text-gray-100">{formatBytes(selectedNode.rxBytes)}</p>
-                  </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Connections:</span>
-                  <p className="text-sm text-gray-900 dark:text-gray-100">{selectedNode.connections}</p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Categories:</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {selectedNode.tags.map(tag => (
-                      <span key={tag} className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded">
-                        {tag}
-                      </span>
-                    ))}
-                </div>
-                </div>
-                </div>
-              </div>
-            )}
-
-            {selectedLink && (
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Traffic Flow Details</h3>
-              <div className="space-y-3">
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Source:</span>
-                  <p className="text-sm text-gray-900 dark:text-gray-100 font-mono break-all">
-                    {getDeviceName(selectedLink.originalSource, devices)} ({selectedLink.originalSource})
-                  </p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Destination:</span>
-                  <p className="text-sm text-gray-900 dark:text-gray-100 font-mono break-all">
-                    {getDeviceName(selectedLink.originalTarget, devices)} ({selectedLink.originalTarget})
-                  </p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Protocol:</span>
-                  <p className="text-sm text-gray-900 dark:text-gray-100">{selectedLink.protocol}</p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Traffic Type:</span>
-                  <p className="text-sm text-gray-900 dark:text-gray-100">{selectedLink.trafficType}</p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Bytes:</span>
-                  <p className="text-sm text-gray-900 dark:text-gray-100">{formatBytes(selectedLink.totalBytes)}</p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Transmitted:</span>
-                  <p className="text-sm text-gray-900 dark:text-gray-100">{formatBytes(selectedLink.txBytes)}</p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Received:</span>
-                  <p className="text-sm text-gray-900 dark:text-gray-100">{formatBytes(selectedLink.rxBytes)}</p>
-              </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Packets:</span>
-                  <p className="text-sm text-gray-900 dark:text-gray-100">{selectedLink.packets.toLocaleString()}</p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">TX Packets:</span>
-                  <p className="text-sm text-gray-900 dark:text-gray-100">{selectedLink.txPackets.toLocaleString()}</p>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-500 dark:text-gray-400">RX Packets:</span>
-                  <p className="text-sm text-gray-900 dark:text-gray-100">{selectedLink.rxPackets.toLocaleString()}</p>
-                </div>
-              </div>
             </div>
           )}
-
-          {!selectedNode && !selectedLink && (
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Network Overview</h3>
-              <div className="space-y-3">
-                <div className="text-sm">
-                  <span className="font-medium text-gray-500 dark:text-gray-400">Total Devices:</span>
-                  <span className="ml-2 text-gray-900 dark:text-gray-100">{nodes.length}</span>
-        </div>
-                <div className="text-sm">
-                  <span className="font-medium text-gray-500 dark:text-gray-400">Tailscale Devices:</span>
-                  <span className="ml-2 text-gray-900 dark:text-gray-100">{nodes.filter(n => n.isTailscale).length}</span>
-      </div>
-                <div className="text-sm">
-                  <span className="font-medium text-gray-500 dark:text-gray-400">Total Traffic Flows:</span>
-                  <span className="ml-2 text-gray-900 dark:text-gray-100">{links.length}</span>
-    </div>
-                <div className="text-sm">
-                  <span className="font-medium text-gray-500 dark:text-gray-400">Network Log Entries:</span>
-                  <span className="ml-2 text-gray-900 dark:text-gray-100">
-                    {networkLogs.length}
-                  </span>
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Legend</h4>
-                <div className="space-y-2 text-xs text-gray-700 dark:text-gray-300">
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 border-2 border-blue-500 bg-blue-100 dark:bg-blue-900 mr-2"></div>
-                    <span>Tailscale Devices</span>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 border-2 border-green-500 bg-green-100 dark:bg-green-900 mr-2"></div>
-                    <span>Private Networks</span>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 border-2 border-yellow-500 bg-yellow-100 dark:bg-yellow-900 mr-2"></div>
-                    <span>Public Internet</span>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 border-2 border-red-600 bg-red-100 dark:bg-red-900 mr-2"></div>
-                    <span>DERP Servers</span>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 border-2 border-purple-600 bg-purple-100 dark:bg-purple-900 mr-2"></div>
-                    <span>IPv6 Devices</span>
-                  </div>
-                </div>
-                
-                <div className="mt-4">
-                  <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Traffic Types</h4>
-                  <div className="space-y-1 text-xs text-gray-700 dark:text-gray-300">
-                    <div className="flex items-center">
-                      <div className="w-4 h-0.5 bg-blue-500 mr-2"></div>
-                      <span>Virtual Traffic</span>
-                    </div>
-                    <div className="flex items-center">
-                      <div className="w-4 h-0.5 bg-green-500 mr-2"></div>
-                      <span>Subnet Traffic</span>
-                    </div>
-                    <div className="flex items-center">
-                      <div className="w-4 h-0.5 bg-yellow-500 mr-2"></div>
-                      <span>Physical Traffic</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Port Boxes</h4>
-                  <div className="space-y-1 text-xs text-gray-700 dark:text-gray-300">
-                    <div className="flex items-center">
-                      <div className="w-4 h-4 border border-green-500 bg-green-100 dark:bg-green-900 mr-2 rounded"></div>
-                      <span>Incoming Ports (Left Side)</span>
-                    </div>
-                    <div className="flex items-center">
-                      <div className="w-4 h-4 border border-yellow-500 bg-yellow-100 dark:bg-yellow-900 mr-2 rounded"></div>
-                      <span>Outgoing Ports (Right Side)</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          </div>
         </div>
       </div>
     </Layout>
