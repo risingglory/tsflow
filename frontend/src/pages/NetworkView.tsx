@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { RefreshCw, XCircle, ChevronLeft, Sidebar } from 'lucide-react'
 import useSWR from 'swr'
-import Layout from '@/components/Layout'
 import NetworkGraph from '@/components/NetworkGraph'
 import { fetcher } from '@/lib/api'
 
@@ -622,31 +621,6 @@ const NetworkView: React.FC = () => {
     setSelectedLink(null)
   }
 
-  const resetAllFilters = () => {
-    // Clear selections
-    setSelectedNode(null)
-    setSelectedLink(null)
-    
-    // Reset search
-    setSearchQuery('')
-    
-    // Reset time range to default
-    setTimeRangeFilter('5m')
-    setUseCustomTimeRange(false)
-    
-    // Reset all filter sets to include all options
-    if (uniqueProtocols.length > 0) setProtocolFilters(new Set(uniqueProtocols))
-    if (uniqueTrafficTypes.length > 0) setTrafficTypeFilters(new Set(uniqueTrafficTypes))
-    if (uniqueIpCategories.length > 0) setIpCategoryFilters(new Set(uniqueIpCategories.filter(cat => cat !== 'ipv6' && cat !== 'derp'))) // Keep derp hidden on reset
-    
-    // Reset other filters
-    setIpVersionFilter('all')
-    setMinBandwidth(0)
-    setMaxBandwidth(bandwidthRange.max)
-    setNodeCountFilter(0)
-    
-    // Reset will be handled by the NetworkGraph component re-rendering
-  }
 
 
   const formatBytes = (bytes: number) => {
@@ -704,83 +678,65 @@ const NetworkView: React.FC = () => {
 
   if (loading) {
     return (
-      <Layout>
-        <div className="h-full bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-          <div className="text-center">
-            <RefreshCw className="w-8 h-8 animate-spin text-blue-500 mx-auto mb-4" />
-            <p className="text-gray-600 dark:text-gray-400">Loading network data...</p>
-          </div>
+      <div className="h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw className="w-8 h-8 animate-spin text-blue-500 mx-auto mb-4" />
+          <p className="text-gray-600 dark:text-gray-400">Loading network data...</p>
         </div>
-      </Layout>
+      </div>
     )
   }
 
   // Show error states
   if (deviceError || networkLogsError) {
     return (
-      <Layout>
-        <div className="h-full bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-          <div className="text-center max-w-lg mx-auto p-6">
-            <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
-              Unable to Load Network Data
-            </h2>
-            <div className="text-gray-600 dark:text-gray-400 mb-6 space-y-2">
-              {deviceError && (
-                <p className="text-sm bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
-                  <strong>Device Error:</strong> {deviceError.message}
-                </p>
-              )}
-              {networkLogsError && (
-                <p className="text-sm bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
-                  <strong>Network Logs Error:</strong> {networkLogsError.message}
-                </p>
-              )}
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
-                This usually means your API credentials are not configured or invalid. 
-                Please check your settings and ensure your API key has the necessary permissions.
+      <div className="h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center max-w-lg mx-auto p-6">
+          <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+            Unable to Load Network Data
+          </h2>
+          <div className="text-gray-600 dark:text-gray-400 mb-6 space-y-2">
+            {deviceError && (
+              <p className="text-sm bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                <strong>Device Error:</strong> {deviceError.message}
               </p>
-            </div>
-            <div className="space-x-3">
-              <button
-                onClick={async () => {
-                  setLoading(true)
-                  try {
-                    await Promise.all([
-                      refetchNetworkLogs(),
-                      refetchDevices()
-                    ])
-                  } finally {
-                    setLoading(false)
-                  }
-                }}
-                className="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 focus:ring-2 focus:ring-blue-500 transition-colors"
-              >
-                Try Again
-              </button>
-              <a
-                href="/settings"
-                className="px-4 py-2 bg-gray-600 dark:bg-gray-700 text-white rounded-md hover:bg-gray-700 dark:hover:bg-gray-600 focus:ring-2 focus:ring-gray-500 transition-colors"
-              >
-                Settings
-              </a>
-            </div>
+            )}
+            {networkLogsError && (
+              <p className="text-sm bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                <strong>Network Logs Error:</strong> {networkLogsError.message}
+              </p>
+            )}
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
+              This usually means your API credentials are not configured or invalid. 
+              Please check your settings and ensure your API key has the necessary permissions.
+            </p>
+          </div>
+          <div className="space-x-3">
+            <button
+              onClick={async () => {
+                setLoading(true)
+                try {
+                  await Promise.all([
+                    refetchNetworkLogs(),
+                    refetchDevices()
+                  ])
+                } finally {
+                  setLoading(false)
+                }
+              }}
+              className="px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 focus:ring-2 focus:ring-blue-500 transition-colors"
+            >
+              Try Again
+            </button>
           </div>
         </div>
-      </Layout>
+      </div>
     )
   }
 
   return (
-    <Layout
-      networkStats={{
-        nodeCount: filteredData.nodes.length,
-        linkCount: filteredData.links.length,
-        timeRange: timeRangeFilter
-      }}
-      onClearSelection={resetAllFilters}
-      showNetworkActions={true}
-    >
+    <div className="h-screen bg-gray-50 dark:bg-gray-900">
       <div className="flex h-full overflow-hidden">
 
         {/* Filters Sidebar */}
@@ -1133,7 +1089,7 @@ const NetworkView: React.FC = () => {
           )}
         </div>
       </div>
-    </Layout>
+    </div>
   )
 }
 
