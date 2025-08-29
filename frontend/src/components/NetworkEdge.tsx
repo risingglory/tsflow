@@ -103,7 +103,7 @@ const NetworkEdge = memo<EdgeProps>(({
       width: getStrokeWidth(),
       opacity: getOpacity(),
     };
-  }, [data, selected, isHighlighted, isSelected, isDimmed]);
+  }, [data, isHighlighted, isSelected, isDimmed]);
 
   // Memoize formatted data for labels
   const formattedData = useMemo(() => {

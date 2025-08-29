@@ -99,11 +99,11 @@ export const useSelection = () => useContext(SelectionContext);
 // Enhanced node and edge types with proper typing
 const nodeTypes = {
   networkDevice: NetworkNode,
-} as any;
+};
 
 const edgeTypes = {
   networkConnection: NetworkEdge,
-} as any;
+};
 
 // Loading spinner component
 const LoadingSpinner: React.FC = () => (
@@ -150,7 +150,6 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
   const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
   const [_isLayouting, setIsLayouting] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const [lastUpdateTime, setLastUpdateTime] = useState<number>(0);
   
   const { getLayoutedElements } = useElkLayout();
   const { getLayoutedElements: getForceLayoutedElements } = useForceLayout();
@@ -259,7 +258,6 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
           // Use floating connection points - React Flow will calculate optimal positions
           setNodes(layoutedNodes);
           setEdges(layoutedEdges);
-          setLastUpdateTime(Date.now());
           
           // Only fit view on initial load or when explicitly requested
           if (shouldFitView) {
@@ -296,8 +294,7 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
               );
               setNodes(forceNodes);
               setEdges(forceEdges);
-              setLastUpdateTime(Date.now());
-              console.log('Force-directed layout applied successfully');
+                  console.log('Force-directed layout applied successfully');
             } catch (forceError) {
               // Final fallback to grid layout
               console.log('Force layout failed, using grid layout fallback');
@@ -314,8 +311,7 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
               
               setNodes(fallbackNodes);
               setEdges(reactFlowEdges);
-              setLastUpdateTime(Date.now());
-            }
+                }
           }
         }
       }
@@ -585,27 +581,6 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
           zoomable
         />
 
-        {/* Enhanced Statistics Panel */}
-        <Panel position="top-left" className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-lg p-3 border border-gray-200 dark:border-gray-700">
-          <h4 className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Network Overview</h4>
-          <div className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
-            <div className="flex justify-between">
-              <span>Nodes:</span>
-              <span className="font-medium">{trafficStats.nodeCount}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Connections:</span>
-              <span className="font-medium">{trafficStats.linkCount}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Total Traffic:</span>
-              <span className="font-medium">{formatBytes(trafficStats.totalBytes)}</span>
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-              Last updated: {new Date(lastUpdateTime).toLocaleTimeString()}
-            </div>
-          </div>
-        </Panel>
 
         {/* Enhanced Legend Panel */}
         <Panel position="bottom-left" className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-lg p-3 border border-gray-200 dark:border-gray-700">

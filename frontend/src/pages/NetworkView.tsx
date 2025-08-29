@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react'
 import { RefreshCw, XCircle, ChevronLeft, Sidebar } from 'lucide-react'
 import useSWR from 'swr'
 import NetworkGraph from '@/components/NetworkGraph'
+import LogViewer from '@/components/LogViewer'
 import { fetcher } from '@/lib/api'
 
 
@@ -180,6 +181,7 @@ const NetworkView: React.FC = () => {
   const [selectedLink, setSelectedLink] = useState<NetworkLink | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [logViewerHeight, setLogViewerHeight] = useState(40) // Track log viewer height
   
   // Sidebar visibility states
   const [leftSidebarVisible, setLeftSidebarVisible] = useState(true)
@@ -206,7 +208,9 @@ const NetworkView: React.FC = () => {
     refreshInterval: 300000 // Refresh every 5 minutes
   })
 
-  const devices = (Array.isArray(deviceData) && deviceData.length > 0 && 'name' in deviceData[0]) ? deviceData as TailscaleDevice[] : []
+  const devices = useMemo(() => {
+    return (Array.isArray(deviceData) && deviceData.length > 0 && 'name' in deviceData[0]) ? deviceData as TailscaleDevice[] : []
+  }, [deviceData])
 
   // Fetch Tailscale network logs - refresh when time range changes
   const networkLogsApiUrl = useMemo(() => {
@@ -264,7 +268,9 @@ const NetworkView: React.FC = () => {
     refreshInterval: 300000 // Refresh every 5 minutes
   })
 
-  const networkLogs = (Array.isArray(networkLogsData) && networkLogsData.length > 0 && 'logged' in networkLogsData[0]) ? networkLogsData : []
+  const networkLogs = useMemo(() => {
+    return (Array.isArray(networkLogsData) && networkLogsData.length > 0 && 'logged' in networkLogsData[0]) ? networkLogsData as any[] : []
+  }, [networkLogsData])
 
   // Set default date range to show most recent data (last 5 minutes)
   useEffect(() => {
@@ -296,7 +302,7 @@ const NetworkView: React.FC = () => {
     const nodeMap = new Map<string, NetworkNode>()
     const linkMap = new Map<string, NetworkLink>()
 
-    networkLogs.forEach((log: any) => {
+    networkLogs.forEach((log) => {
       // Combine all traffic types into a single array
       const allTraffic = [
         ...(log.virtualTraffic || []).map((t: any) => ({ ...t, type: 'virtual' as const })),
@@ -304,7 +310,7 @@ const NetworkView: React.FC = () => {
         ...(log.physicalTraffic || []).map((t: any) => ({ ...t, type: 'physical' as const, proto: t.proto || 0 }))
       ]
 
-      allTraffic.forEach((traffic: any) => {
+      allTraffic.forEach((traffic) => {
         const srcIP = extractIP(traffic.src)
         const dstIP = extractIP(traffic.dst)
         
@@ -654,7 +660,7 @@ const NetworkView: React.FC = () => {
   
   useEffect(() => {
     if (!filtersInitialized && uniqueProtocols.length > 0 && uniqueTrafficTypes.length > 0 && uniqueIpCategories.length > 0) {
-      setProtocolFilters(new Set(uniqueProtocols))
+      setProtocolFilters(new Set(uniqueProtocols.filter(proto => proto !== 'Proto-99'))) // Exclude Proto-99 from default selection
       setTrafficTypeFilters(new Set(uniqueTrafficTypes))
       setIpCategoryFilters(new Set(uniqueIpCategories.filter(cat => cat !== 'ipv6' && cat !== 'derp'))) // Hide derp by default
       setFiltersInitialized(true)
@@ -736,13 +742,14 @@ const NetworkView: React.FC = () => {
   }
 
   return (
-    <div className="h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="flex h-full overflow-hidden">
+    <div className="h-screen bg-gray-50 dark:bg-gray-900 flex flex-col" style={{ position: 'relative' }}>
+      <div className="absolute inset-0" style={{ bottom: `${logViewerHeight}px` }}>
+        <div className="flex h-full overflow-hidden">
 
         {/* Filters Sidebar */}
-        <div className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto flex-shrink-0 h-full transition-all duration-300 ${
+        <div className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto flex-shrink-0 transition-all duration-300 ${
           leftSidebarVisible ? 'w-80' : 'w-0'
-        }`}>
+        }`} style={{ height: '100%' }}>
                       <div className={`p-6 ${leftSidebarVisible ? 'block' : 'hidden'}`}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Filters</h3>
@@ -1063,7 +1070,7 @@ const NetworkView: React.FC = () => {
           </div>
 
         {/* Main Network View */}
-        <div className="flex-1 relative">
+        <div className="flex-1 relative" style={{ height: '100%' }}>
           <NetworkGraph
             nodes={filteredData.nodes}
             links={filteredData.links}
@@ -1075,20 +1082,74 @@ const NetworkView: React.FC = () => {
             selectedLink={selectedLink}
           />
           
-          {/* Left Control Buttons - Only show when sidebar is closed */}
+          {/* Sidebar Toggle Button - Only show when sidebar is closed */}
           {!leftSidebarVisible && (
-            <div className="absolute left-2 top-4 z-10 flex flex-col space-y-2">
-              <button
-                onClick={() => setLeftSidebarVisible(true)}
-                className="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                title="Show filters"
-              >
-                <Sidebar className="w-4 h-4" />
-              </button>
-            </div>
+            <button
+              onClick={() => setLeftSidebarVisible(true)}
+              className="absolute left-4 top-4 z-10 p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              title="Show filters"
+            >
+              <Sidebar className="w-5 h-5" />
+            </button>
           )}
+          
+          {/* Network Stats Card - Always visible in top right */}
+          <div className="absolute right-4 top-4 z-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-4 min-w-[240px]">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+              Network Overview
+            </h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600 dark:text-gray-400">Nodes:</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">{filteredData.nodes.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600 dark:text-gray-400">Connections:</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">{filteredData.links.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600 dark:text-gray-400">Total Traffic:</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">
+                  {formatBytes(filteredData.nodes.reduce((sum, node) => sum + node.totalBytes, 0))}
+                </span>
+              </div>
+              <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Time Range: {useCustomTimeRange && startDate && endDate ? 
+                    'Custom' : timeRangeFilter
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
+      </div>
+      
+      {/* Log Viewer */}
+      <LogViewer
+        networkLogs={networkLogs as any[]}
+        devices={devices}
+        searchQuery={searchQuery}
+        protocolFilters={protocolFilters}
+        trafficTypeFilters={trafficTypeFilters}
+        onHeightChange={setLogViewerHeight}
+        onSelectLog={(logEntry) => {
+          // Highlight the corresponding nodes in the graph
+          const srcNode = nodes.find(n => 
+            n.ips?.includes(logEntry.srcIP) || n.ip === logEntry.srcIP || n.displayName === logEntry.srcDevice
+          )
+          const dstNode = nodes.find(n => 
+            n.ips?.includes(logEntry.dstIP) || n.ip === logEntry.dstIP || n.displayName === logEntry.dstDevice
+          )
+          
+          if (srcNode) {
+            setSelectedNode(srcNode)
+          } else if (dstNode) {
+            setSelectedNode(dstNode)
+          }
+        }}
+      />
     </div>
   )
 }
