@@ -72,7 +72,7 @@ export enum NodeCategory {
   DERP = 'derp',
   TAILSCALE = 'tailscale', 
   PRIVATE = 'private',
-  IPV6 = 'ipv6',
+  PUBLIC = 'public',
   SERVER = 'server',
   CLIENT = 'client',
   UNKNOWN = 'unknown'
@@ -247,12 +247,12 @@ export const NODE_COLOR_SCHEMES: Record<NodeCategory, NodeColorScheme> = {
     accent: 'text-green-700',
     icon: '🟢'
   },
-  [NodeCategory.IPV6]: {
-    background: 'bg-purple-50',
-    border: 'border-purple-500',
-    ring: 'ring-purple-500',
-    accent: 'text-purple-700',
-    icon: '🟣'
+  [NodeCategory.PUBLIC]: {
+    background: 'bg-orange-50',
+    border: 'border-orange-500',
+    ring: 'ring-orange-500',
+    accent: 'text-orange-700',
+    icon: '🟠'
   },
   [NodeCategory.SERVER]: {
     background: 'bg-emerald-50',

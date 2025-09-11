@@ -1,4 +1,4 @@
-import { memo, useMemo, useCallback, useRef, useLayoutEffect, useState } from 'react';
+import { memo, useMemo, useCallback, useState } from 'react';
 import { Handle, NodeProps, Position } from '@xyflow/react';
 import { useSelection } from './ReactFlowGraph';
 
@@ -25,374 +25,305 @@ const formatBytes = (bytes: number): string => {
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  const value = bytes / Math.pow(k, i);
+  // Use different precision based on size
+  const precision = value < 10 ? 1 : 0;
+  return `${value.toFixed(precision)} ${sizes[i]}`;
+};
+
+// Common port names for better UX
+const WELL_KNOWN_PORTS: Record<number, string> = {
+  22: 'SSH',
+  53: 'DNS',
+  80: 'HTTP',
+  443: 'HTTPS',
+  3389: 'RDP',
+  5432: 'PostgreSQL',
+  3306: 'MySQL',
+  6379: 'Redis',
+  8080: 'HTTP-Alt',
+  8443: 'HTTPS-Alt',
+  9090: 'Prometheus',
+  27017: 'MongoDB',
 };
 
 const NetworkNode = memo<NodeProps>(({ data, selected }) => {
-  const [nodeDimensions, setNodeDimensions] = useState({ width: 280, height: 140 });
-  const contentRef = useRef<HTMLDivElement>(null);
-  
-  // Memoize processed data for performance
-  const processedData = useMemo(() => {
-    const nodeData = data as NetworkNodeData;
-    const allIPs = nodeData.ips || [nodeData.ip];
-    const ipv4Addresses = allIPs.filter((ip: string) => !ip.includes(':'));
-    const ipv6Addresses = allIPs.filter((ip: string) => ip.includes(':'));
-    
-    const deviceTags = (nodeData.tags || [])
-      .filter((tag: string) => tag && tag.startsWith('tag:')) // Only show actual Tailscale tags
-      .slice(0, 8); // Show up to 8 tags
-
-    const allPorts = new Set([...nodeData.incomingPorts, ...nodeData.outgoingPorts]);
-    const uniquePorts = Array.from(allPorts).sort((a, b) => a - b).slice(0, 20);
-
-    return {
-      ipv4Addresses,
-      ipv6Addresses,
-      deviceTags,
-      uniquePorts,
-      formattedBytes: formatBytes(nodeData.totalBytes),
-      protocolsList: Array.from(nodeData.protocols)
-    };
-  }, [data]);
-
-  // Helper function to determine protocol for port
-  const getPortProtocol = useCallback((port: number): string => {
-    const protocols = processedData.protocolsList;
-    if ([53, 67, 68, 69, 123, 161, 162].includes(port) || protocols.includes('UDP')) return 'UDP';
-    if ([1, 8].includes(port) || protocols.includes('ICMP')) return 'ICMP';
-    return 'TCP';
-  }, [processedData.protocolsList]);
-  
-  // Measure content and calculate optimal dimensions
-  const measureContent = useCallback(() => {
-    if (!contentRef.current) return;
-    
-    const content = contentRef.current;
-    const computedStyle = getComputedStyle(content);
-    const padding = parseFloat(computedStyle.paddingLeft) + parseFloat(computedStyle.paddingRight);
-    
-    // Create temporary element for text measurement
-    const tempDiv = document.createElement('div');
-    tempDiv.style.cssText = `
-      position: absolute;
-      visibility: hidden;
-      white-space: nowrap;
-      font-family: ${computedStyle.fontFamily};
-      font-size: ${computedStyle.fontSize};
-      font-weight: ${computedStyle.fontWeight};
-      top: -9999px;
-    `;
-    document.body.appendChild(tempDiv);
-    
-    let maxWidth = 0;
-    let totalHeight = 0;
-    
-    // Measure header text
-    const headerText = (data as NetworkNodeData).displayName;
-    tempDiv.textContent = headerText;
-    const headerWidth = tempDiv.offsetWidth + 140; // Increased space for traffic info
-    maxWidth = Math.max(maxWidth, headerWidth);
-    totalHeight += 45; // Header height with margins
-    
-    // Measure IP addresses
-    processedData.ipv4Addresses.forEach(ip => {
-      tempDiv.textContent = `IPv4: ${ip}`;
-      maxWidth = Math.max(maxWidth, tempDiv.offsetWidth + 20);
-    });
-    processedData.ipv6Addresses.forEach(ip => {
-      const displayIp = ip.length > 25 ? `${ip.substring(0, 22)}...` : ip;
-      tempDiv.textContent = `IPv6: ${displayIp}`;
-      maxWidth = Math.max(maxWidth, tempDiv.offsetWidth + 20);
-    });
-    totalHeight += (processedData.ipv4Addresses.length + processedData.ipv6Addresses.length) * 18;
-    
-    // Measure protocols
-    if (processedData.protocolsList.length > 0) {
-      tempDiv.textContent = `📡 ${processedData.protocolsList.join(', ')}`;
-      maxWidth = Math.max(maxWidth, tempDiv.offsetWidth + 20);
-      totalHeight += 18; // Reduced from 20
-    }
-    
-    // Calculate ports width (they wrap) - be more generous with spacing
-    if (processedData.uniquePorts.length > 0) {
-      const avgPortWidth = 80; // Increased width for port badges
-      const estimatedWidth = Math.max(maxWidth, 350); // Ensure minimum width for ports
-      const portsPerRow = Math.max(1, Math.floor(estimatedWidth / avgPortWidth));
-      const portRows = Math.ceil(processedData.uniquePorts.length / portsPerRow);
-      totalHeight += (portRows * 30) + 15; // Reduced height per row and margin
-      
-      // Update maxWidth if ports need more space
-      const actualPortsWidth = Math.min(processedData.uniquePorts.length, portsPerRow) * avgPortWidth;
-      maxWidth = Math.max(maxWidth, actualPortsWidth + 40);
-    }
-    
-    // Calculate tags width (they wrap) - be more generous for full tag names
-    if (processedData.deviceTags.length > 0) {
-      let maxTagRowWidth = 0;
-      processedData.deviceTags.forEach(tag => {
-        tempDiv.textContent = tag; // Now measuring full tag:name
-        const tagWidth = tempDiv.offsetWidth + 24; // Increased padding for tags
-        maxTagRowWidth = Math.max(maxTagRowWidth, tagWidth);
-      });
-      
-      const avgTagWidth = 120; // Increased for full tag names like "tag:k8s"
-      const estimatedWidth = Math.max(maxWidth, 350);
-      const tagsPerRow = Math.max(1, Math.floor(estimatedWidth / avgTagWidth));
-      const tagRows = Math.ceil(processedData.deviceTags.length / tagsPerRow);
-      totalHeight += (tagRows * 28) + 12; // Reduced height per row
-      
-      // Update maxWidth based on tag requirements
-      const actualTagsWidth = Math.min(processedData.deviceTags.length, tagsPerRow) * avgTagWidth;
-      maxWidth = Math.max(maxWidth, actualTagsWidth + 40);
-    }
-    
-    // Add user section height
-    if ((data as NetworkNodeData).user) {
-      totalHeight += 22; // Reduced from 25
-    }
-    
-    // Add footer height (includes Tailscale indicator)
-    totalHeight += 25; // Reduced from 45
-    
-    // Add minimal base padding for proper layout
-    totalHeight += 15; // Reduced from 30
-    
-    document.body.removeChild(tempDiv);
-    
-    // Apply minimum constraints only - no maximum limits
-    const finalWidth = Math.max(320, maxWidth + padding + 60);
-    const finalHeight = Math.max(140, totalHeight + 10); // Reduced buffer from 30 to 10
-    
-    // Node dimensions calculated successfully
-    
-    setNodeDimensions({ width: finalWidth, height: finalHeight });
-  }, [data, processedData]);
-  
-  // Measure content when data changes
-  useLayoutEffect(() => {
-    const timer = setTimeout(measureContent, 0);
-    return () => clearTimeout(timer);
-  }, [measureContent]);
-
-  // Get tag colors based on tag content with solid dark mode colors
-  const getTagColors = useCallback((tag: string): string => {
-    const tagContent = tag.toLowerCase();
-    if (tagContent.includes('prod') || tagContent.includes('production')) {
-      return 'bg-red-100 dark:bg-red-800 text-red-800 dark:text-red-100 border-red-300 dark:border-red-500';
-    }
-    if (tagContent.includes('dev') || tagContent.includes('development')) {
-      return 'bg-yellow-100 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-100 border-yellow-300 dark:border-yellow-500';
-    }
-    if (tagContent.includes('staging') || tagContent.includes('stage')) {
-      return 'bg-orange-100 dark:bg-orange-800 text-orange-800 dark:text-orange-100 border-orange-300 dark:border-orange-500';
-    }
-    if (tagContent.includes('server')) {
-      return 'bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-100 border-green-300 dark:border-green-500';
-    }
-    if (tagContent.includes('k8s') || tagContent.includes('kubernetes')) {
-      return 'bg-purple-100 dark:bg-purple-800 text-purple-800 dark:text-purple-100 border-purple-300 dark:border-purple-500';
-    }
-    return 'bg-indigo-100 dark:bg-indigo-800 text-indigo-800 dark:text-indigo-100 border-indigo-300 dark:border-indigo-500';
-  }, []);
-
-  // Get highlighting state from context
+  const [isExpanded, setIsExpanded] = useState(false);
   const nodeData = data as NetworkNodeData;
+  
+  // Get selection state
   const { highlightedNodes, selectedNode, selectedLink } = useSelection();
   const isHighlighted = highlightedNodes.has(nodeData.id) || selected;
   const isSelected = selectedNode?.id === nodeData.id || selected;
   const hasSelection = selectedNode !== null || selectedLink !== null;
   const isDimmed = hasSelection && !isHighlighted;
 
-  // Memoize color calculations with solid dark mode colors
-  const colors = useMemo(() => {
-    if (nodeData.tags.includes('derp')) return { 
-      bg: isSelected ? 'bg-red-100 dark:bg-red-900' : 'bg-red-50 dark:bg-red-950', 
-      border: 'border-red-500 dark:border-red-400', 
-      ring: 'ring-red-500',
-      accent: 'text-red-700 dark:text-red-100'
+  // Process and organize data
+  const processedData = useMemo(() => {
+    const allIPs = nodeData.ips || [nodeData.ip];
+    const ipv4Addresses = allIPs.filter((ip: string) => !ip.includes(':'));
+    const ipv6Addresses = allIPs.filter((ip: string) => ip.includes(':'));
+    
+    // Filter and clean up tags
+    const deviceTags = (nodeData.tags || [])
+      .filter((tag: string) => tag && tag.startsWith('tag:'))
+      .map(tag => tag.replace('tag:', '')) // Remove prefix for cleaner display
+      .slice(0, 6);
+
+    // Process ports with better organization
+    const allPorts = Array.from(new Set([...nodeData.incomingPorts, ...nodeData.outgoingPorts]))
+      .sort((a, b) => a - b);
+    
+    // Separate well-known ports from high ports
+    const wellKnownPorts = allPorts.filter(p => p < 1024 || WELL_KNOWN_PORTS[p]);
+    const highPorts = allPorts.filter(p => p >= 1024 && !WELL_KNOWN_PORTS[p]);
+    
+    // Limit display but show count of hidden ports
+    const displayPorts = isExpanded ? allPorts : [...wellKnownPorts.slice(0, 8), ...highPorts.slice(0, 4)];
+    const hiddenPortCount = allPorts.length - displayPorts.length;
+
+    // Clean up protocols
+    const protocols = Array.from(nodeData.protocols).filter(p => p !== 'Proto-0');
+    if (protocols.length === 0 && allPorts.length > 0) {
+      protocols.push('TCP'); // Default assumption
+    }
+
+    return {
+      ipv4Addresses,
+      ipv6Addresses,
+      deviceTags,
+      displayPorts,
+      hiddenPortCount,
+      totalPortCount: allPorts.length,
+      formattedBytes: formatBytes(nodeData.totalBytes),
+      protocols
     };
-    if (nodeData.tags.includes('tailscale')) return { 
-      bg: isSelected ? 'bg-blue-100 dark:bg-blue-900' : 'bg-blue-50 dark:bg-blue-950', 
-      border: 'border-blue-500 dark:border-blue-400', 
-      ring: 'ring-blue-500',
-      accent: 'text-blue-700 dark:text-blue-100'
+  }, [nodeData, isExpanded]);
+
+  // Get port label with protocol
+  const getPortLabel = useCallback((port: number): string => {
+    const name = WELL_KNOWN_PORTS[port];
+    if (name) return name;
+    
+    // Determine protocol based on common patterns
+    if ([53, 67, 68, 123, 161, 162, 514, 1900].includes(port)) return `${port}•UDP`;
+    return `${port}•TCP`;
+  }, []);
+
+  // Dynamic color scheme based on node type
+  const colorScheme = useMemo(() => {
+    // Service nodes (📦 or 📍 prefix)
+    if (nodeData.displayName.startsWith('📦') || nodeData.displayName.startsWith('📍')) {
+      return {
+        bg: 'bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950 dark:to-purple-950',
+        border: isSelected ? 'border-violet-500 dark:border-violet-400' : 'border-violet-300 dark:border-violet-700',
+        header: 'bg-gradient-to-r from-violet-100 to-purple-100 dark:from-violet-900 dark:to-purple-900',
+        accent: 'text-violet-700 dark:text-violet-300',
+        tag: 'bg-violet-100 dark:bg-violet-800',
+        indicator: 'bg-violet-500'
+      };
+    }
+    
+    // Tailscale nodes
+    if (nodeData.isTailscale) {
+      return {
+        bg: 'bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950 dark:to-cyan-950',
+        border: isSelected ? 'border-blue-500 dark:border-blue-400' : 'border-blue-300 dark:border-blue-700',
+        header: 'bg-gradient-to-r from-blue-100 to-cyan-100 dark:from-blue-900 dark:to-cyan-900',
+        accent: 'text-blue-700 dark:text-blue-300',
+        tag: 'bg-blue-100 dark:bg-blue-800',
+        indicator: 'bg-blue-500'
+      };
+    }
+    
+    // External nodes
+    return {
+      bg: 'bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950 dark:to-orange-950',
+      border: isSelected ? 'border-amber-500 dark:border-amber-400' : 'border-amber-300 dark:border-amber-700',
+      header: 'bg-gradient-to-r from-amber-100 to-orange-100 dark:from-amber-900 dark:to-orange-900',
+      accent: 'text-amber-700 dark:text-amber-300',
+      tag: 'bg-amber-100 dark:bg-amber-800',
+      indicator: 'bg-amber-500'
     };
-    if (nodeData.tags.includes('private')) return { 
-      bg: isSelected ? 'bg-green-100 dark:bg-green-900' : 'bg-green-50 dark:bg-green-950', 
-      border: 'border-green-500 dark:border-green-400', 
-      ring: 'ring-green-500',
-      accent: 'text-green-700 dark:text-green-100'
-    };
-    if (nodeData.tags.includes('ipv6')) return { 
-      bg: isSelected ? 'bg-purple-100 dark:bg-purple-900' : 'bg-purple-50 dark:bg-purple-950', 
-      border: 'border-purple-500 dark:border-purple-400', 
-      ring: 'ring-purple-500',
-      accent: 'text-purple-700 dark:text-purple-100'
-    };
-    return { 
-      bg: isSelected ? 'bg-amber-100 dark:bg-amber-900' : 'bg-amber-50 dark:bg-amber-950', 
-      border: 'border-amber-500 dark:border-amber-400', 
-      ring: 'ring-amber-500',
-      accent: 'text-amber-700 dark:text-amber-100'
-    };
-  }, [nodeData.tags, isSelected]);
+  }, [nodeData, isSelected]);
+
+  // Get tag style based on content
+  const getTagStyle = useCallback((tag: string) => {
+    const lower = tag.toLowerCase();
+    if (lower.includes('k8s')) return 'bg-purple-100 dark:bg-purple-800 text-purple-700 dark:text-purple-200';
+    if (lower.includes('prod')) return 'bg-red-100 dark:bg-red-800 text-red-700 dark:text-red-200';
+    if (lower.includes('dev')) return 'bg-yellow-100 dark:bg-yellow-800 text-yellow-700 dark:text-yellow-200';
+    if (lower.includes('staging')) return 'bg-orange-100 dark:bg-orange-800 text-orange-700 dark:text-orange-200';
+    if (lower.includes('ottawa') || lower.includes('robbinsdale')) 
+      return 'bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-200';
+    return 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200';
+  }, []);
 
   return (
     <div
-      ref={contentRef}
       className={`
-        network-device-node p-4 rounded-xl border-2
-        shadow-lg
-        ${colors.bg} ${colors.border}
-        ${isSelected ? `ring-4 ${colors.ring} ring-opacity-50 scale-105 shadow-2xl` : 'hover:shadow-xl hover:scale-102'}
-        ${isDimmed ? 'opacity-20' : 'opacity-100'}
-        transition-all duration-150 ease-out
+        relative rounded-lg border-2 shadow-lg
+        ${colorScheme.bg} ${colorScheme.border}
+        ${isSelected ? 'ring-2 ring-offset-2 ring-blue-400 dark:ring-offset-gray-900' : ''}
+        ${isDimmed ? 'opacity-30' : ''}
+        transition-all duration-200 hover:shadow-xl
+        min-w-[280px]
       `}
-      style={{ 
-        width: `${nodeDimensions.width}px`,
-        height: `${nodeDimensions.height}px`,
-        minWidth: '240px',
-        minHeight: '120px',
-        filter: isSelected ? 'drop-shadow(0 0 10px rgba(59, 130, 246, 0.5))' : 
-                isDimmed ? 'grayscale(80%) blur(0.5px)' : undefined,
+      style={{
+        filter: isDimmed ? 'grayscale(50%)' : undefined,
         transform: isSelected ? 'scale(1.02)' : undefined,
         zIndex: isHighlighted ? 10 : 1,
       }}
-      role="button"
-      tabIndex={0}
-      aria-label={`Network device: ${nodeData.displayName}`}
-      aria-selected={isSelected}
     >
-      {/* Single centered handle for true middle connections */}
+      {/* Invisible handles for connections */}
       <Handle 
         type="source" 
         position={Position.Top}
-        className="!opacity-0 !pointer-events-none !w-0 !h-0 !border-0"
-        style={{ 
-          background: 'transparent', 
-          visibility: 'hidden',
-          left: '50%',
-          top: '50%',
-          transform: 'translate(-50%, -50%)'
-        }}
+        className="!opacity-0 !pointer-events-none !w-0 !h-0"
+        style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
       />
       <Handle 
         type="target" 
         position={Position.Top}
-        className="!opacity-0 !pointer-events-none !w-0 !h-0 !border-0" 
-        style={{ 
-          background: 'transparent', 
-          visibility: 'hidden',
-          left: '50%',
-          top: '50%',
-          transform: 'translate(-50%, -50%)'
-        }}
+        className="!opacity-0 !pointer-events-none !w-0 !h-0"
+        style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
       />
       
-      {/* Header with device name and traffic */}
-      <header className="flex justify-between items-start mb-3 pb-2 border-b border-gray-200 dark:border-gray-600">
-        <h3 className={`text-sm font-bold truncate flex-1 pr-3 ${colors.accent}`}>
-          {(data as NetworkNodeData).displayName}
-        </h3>
-        <div className="flex flex-col items-end">
-          <span className="text-xs font-bold text-green-600 dark:text-green-400 whitespace-nowrap">
-            {processedData.formattedBytes}
-          </span>
-          <span className="text-xs text-gray-500 dark:text-gray-300">
-            {(data as NetworkNodeData).connections} conn{(data as NetworkNodeData).connections !== 1 ? 's' : ''}
-          </span>
-        </div>
-      </header>
-
-      {/* User/Identity section */}
-      {(data as NetworkNodeData).user && (
-        <div className="flex items-center gap-1 mb-3 text-xs">
-          <span className="text-indigo-600">👤</span>
-          <span className="font-medium text-indigo-600 truncate">{(data as NetworkNodeData).user}</span>
-        </div>
-      )}
-
-      {/* IP Addresses section */}
-      <section className="space-y-1 mb-2" aria-label="IP Addresses">
-        {processedData.ipv4Addresses.map(ip => (
-          <div key={ip} className="flex items-center gap-1 text-xs">
-            <span className="text-blue-600 dark:text-blue-400 font-medium">IPv4:</span>
-            <code className="font-mono text-blue-700 dark:text-blue-100 bg-blue-50 dark:bg-blue-800 px-1 rounded">{ip}</code>
-          </div>
-        ))}
-        {processedData.ipv6Addresses.map(ip => (
-          <div key={ip} className="flex items-center gap-1 text-xs">
-            <span className="text-purple-600 dark:text-purple-400 font-medium">IPv6:</span>
-            <code className="font-mono text-purple-700 dark:text-purple-100 bg-purple-50 dark:bg-purple-800 px-1 rounded truncate" title={ip}>
-              {ip.length > 25 ? `${ip.substring(0, 22)}...` : ip}
-            </code>
-          </div>
-        ))}
-      </section>
-
-      {/* Protocols section */}
-      {processedData.protocolsList.length > 0 && (
-        <section className="mb-2" aria-label="Protocols">
-          <div className="flex items-center gap-1 text-xs">
-            <span className="text-gray-600 dark:text-gray-400">📡</span>
-            <span className="text-gray-700 dark:text-gray-200 font-medium">
-              {processedData.protocolsList.join(', ')}
+      {/* Header Section */}
+      <div className={`px-4 py-3 rounded-t-lg ${colorScheme.header} border-b border-gray-200 dark:border-gray-700`}>
+        <div className="flex justify-between items-start gap-3">
+          <h3 
+            className={`font-bold text-base flex-1 ${colorScheme.accent} break-words leading-tight`}
+            title={nodeData.displayName}
+            style={{
+              wordBreak: 'break-word',
+              overflowWrap: 'anywhere',
+              hyphens: 'auto',
+              lineHeight: '1.3'
+            }}
+          >
+            {nodeData.displayName}
+          </h3>
+          <div className="flex flex-col items-end shrink-0">
+            <span className="text-sm font-bold text-green-600 dark:text-green-400">
+              {processedData.formattedBytes}
+            </span>
+            <span className="text-xs text-gray-600 dark:text-gray-400">
+              {nodeData.connections} conn{nodeData.connections !== 1 ? 's' : ''}
             </span>
           </div>
-        </section>
-      )}
+        </div>
+        
+        {/* User info if present */}
+        {nodeData.user && (
+          <div className="mt-2 text-xs text-gray-600 dark:text-gray-300">
+            <span className="opacity-70">User:</span> {nodeData.user}
+          </div>
+        )}
+      </div>
 
-      {/* Ports section */}
-      {processedData.uniquePorts.length > 0 && (
-        <section className="mb-2" aria-label="Network Ports">
-          <div className="flex flex-wrap gap-1">
-            {processedData.uniquePorts.map(port => (
+      {/* Body Section */}
+      <div className="px-4 py-3 space-y-3">
+        {/* IP Addresses */}
+        <div className="space-y-1">
+          {processedData.ipv4Addresses.map(ip => (
+            <div key={ip} className="flex items-center gap-2 text-sm">
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400 w-10">IPv4:</span>
+              <code className="font-mono text-blue-600 dark:text-blue-400">{ip}</code>
+            </div>
+          ))}
+          {processedData.ipv6Addresses.slice(0, 1).map(ip => (
+            <div key={ip} className="flex items-center gap-2 text-sm">
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400 w-10">IPv6:</span>
+              <code className="font-mono text-purple-600 dark:text-purple-400 truncate" title={ip}>
+                {ip.length > 30 ? `${ip.substring(0, 27)}...` : ip}
+              </code>
+            </div>
+          ))}
+        </div>
+
+        {/* Protocols */}
+        {processedData.protocols.length > 0 && (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">🔌</span>
+            <span className="font-medium">{processedData.protocols.join(', ')}</span>
+          </div>
+        )}
+
+        {/* Ports Section - Improved */}
+        {processedData.displayPorts.length > 0 && (
+          <div>
+            <div className="flex flex-wrap gap-1.5">
+              {processedData.displayPorts.map(port => {
+                const label = getPortLabel(port);
+                const isWellKnown = port < 1024 || WELL_KNOWN_PORTS[port];
+                return (
+                  <span
+                    key={port}
+                    className={`
+                      inline-flex items-center px-2 py-1 text-xs rounded-full
+                      font-mono transition-colors cursor-default
+                      ${isWellKnown 
+                        ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 border border-blue-200 dark:border-blue-700' 
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
+                      }
+                      hover:bg-opacity-70
+                    `}
+                    title={`Port ${port}`}
+                  >
+                    {label}
+                  </span>
+                );
+              })}
+              {processedData.hiddenPortCount > 0 && (
+                <button
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  className="inline-flex items-center px-2 py-1 text-xs rounded-full
+                    bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300
+                    hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                >
+                  {isExpanded ? '−' : '+'} {processedData.hiddenPortCount} more
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Tags Section - Improved */}
+        {processedData.deviceTags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {processedData.deviceTags.map(tag => (
               <span
-                key={port}
-                className="inline-flex items-center px-2 py-1 text-xs bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-100 rounded-full border border-blue-300 dark:border-blue-500 font-mono hover:bg-blue-200 dark:hover:bg-blue-700 transition-colors"
-                title={`Port ${port} (${getPortProtocol(port)})`}
+                key={tag}
+                className={`
+                  inline-flex items-center px-2 py-1 text-xs rounded-full
+                  font-medium transition-transform hover:scale-105
+                  ${getTagStyle(tag)}
+                `}
               >
-                {port}•{getPortProtocol(port)}
+                tag:{tag}
               </span>
             ))}
           </div>
-        </section>
-      )}
+        )}
+      </div>
 
-      {/* Tags section */}
-      {processedData.deviceTags.length > 0 && (
-        <section className="flex flex-wrap gap-1 mb-2" aria-label="Device Tags">
-          {processedData.deviceTags.map(tag => (
-            <span
-              key={tag}
-              className={`
-                inline-block px-2 py-1 text-xs rounded-full font-medium border
-                transition-all duration-200 hover:scale-105
-                ${getTagColors(tag)}
-              `}
-              title={`Tag: ${tag}`}
-            >
-              {tag}
-            </span>
-          ))}
-        </section>
-      )}
-
-      {/* Status indicators */}
-      <footer className="flex justify-between items-center mt-2 pt-1 border-t border-gray-200 dark:border-gray-600">
-        <div className="flex items-center gap-2 text-xs">
-          {(data as NetworkNodeData).isTailscale && (
-            <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-300">
-              <div className="w-2 h-2 bg-blue-500 dark:bg-blue-400 rounded-full"></div>
-              Tailscale
-            </span>
+      {/* Footer Section */}
+      <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          {nodeData.isTailscale && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <div className={`w-2 h-2 ${colorScheme.indicator} rounded-full animate-pulse`}></div>
+              <span className={colorScheme.accent}>Tailscale</span>
+            </div>
           )}
         </div>
-        <div className="text-xs text-gray-500 dark:text-gray-300">
-          {processedData.uniquePorts.length > 0 && `${processedData.uniquePorts.length} ports`}
-        </div>
-      </footer>
+        {processedData.totalPortCount > 0 && (
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            {processedData.totalPortCount} ports
+          </span>
+        )}
+      </div>
     </div>
   );
 });

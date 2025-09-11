@@ -112,26 +112,30 @@ const categorizeIP = (ip: string): string[] => {
   // DERP servers
   if (ip === '127.3.3.40') return ['derp']
   
-  // IPv4 Tailscale addresses
+  // IPv4 Tailscale addresses (100.64.0.0/10 CGNAT range used by Tailscale)
   if (ip.startsWith('100.')) return ['tailscale']
   
-  // IPv6 Tailscale addresses 
-  if (ip.startsWith('fd7a:115c:a1e0:')) return ['tailscale', 'ipv6']
+  // IPv6 Tailscale addresses (fd7a:115c:a1e0::/48 is Tailscale's IPv6 prefix)
+  if (ip.startsWith('fd7a:115c:a1e0:')) return ['tailscale']
   
-  // IPv4 private addresses
+  // IPv4 private addresses (RFC 1918)
   if (ip.startsWith('192.168.') || ip.startsWith('10.') || 
       (ip.startsWith('172.') && parseInt(ip.split('.')[1]) >= 16 && parseInt(ip.split('.')[1]) <= 31)) {
     return ['private']
   }
   
-  // IPv6 private/link-local addresses
+  // IPv6 private/link-local addresses (RFC 4193, RFC 4291)
+  // fc00::/7 (Unique Local Addresses), fe80::/10 (Link-Local)
   if (ip.startsWith('fe80:') || ip.startsWith('fc00:') || ip.startsWith('fd00:')) {
-    return ['private', 'ipv6']
+    // Note: fd00::/8 is part of fc00::/7, but excluding Tailscale's specific prefix
+    if (!ip.startsWith('fd7a:115c:a1e0:')) {
+      return ['private']
+    }
   }
   
-  // Other IPv6 addresses
+  // IPv6 addresses (contains colons) - treat as public if not private or Tailscale
   if (ip.includes(':')) {
-    return ['public', 'ipv6']
+    return ['public']
   }
   
   // Public IPv4 addresses
@@ -611,8 +615,11 @@ const NetworkView: React.FC = () => {
 
       // IP version filter (IPv4/IPv6)
       if (ipVersionFilter !== 'all') {
-        const hasIPv6 = node.tags.includes('ipv6')
-        if (ipVersionFilter === 'ipv4' && hasIPv6) return false
+        const allIPs = node.ips || [node.ip]
+        const hasIPv6 = allIPs.some(ip => ip.includes(':'))
+        const hasIPv4 = allIPs.some(ip => !ip.includes(':'))
+        
+        if (ipVersionFilter === 'ipv4' && !hasIPv4) return false
         if (ipVersionFilter === 'ipv6' && !hasIPv6) return false
       }
 
@@ -720,7 +727,7 @@ const NetworkView: React.FC = () => {
     if (!filtersInitialized && uniqueProtocols.length > 0 && uniqueTrafficTypes.length > 0 && uniqueIpCategories.length > 0) {
       setProtocolFilters(new Set(uniqueProtocols.filter(proto => proto !== 'Proto-99'))) // Exclude Proto-99 from default selection
       setTrafficTypeFilters(new Set(uniqueTrafficTypes))
-      setIpCategoryFilters(new Set(uniqueIpCategories.filter(cat => cat !== 'ipv6' && cat !== 'derp'))) // Hide derp by default
+      setIpCategoryFilters(new Set(uniqueIpCategories.filter(cat => cat !== 'derp'))) // Hide derp by default
       setFiltersInitialized(true)
     }
   }, [uniqueProtocols, uniqueTrafficTypes, uniqueIpCategories, filtersInitialized])
@@ -1059,7 +1066,7 @@ const NetworkView: React.FC = () => {
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">IP Category</label>
               <div className="space-y-2">
-                {uniqueIpCategories.filter(cat => cat !== 'ipv6').map(category => (
+                {uniqueIpCategories.map(category => (
                   <label key={category} className="flex items-center">
                     <input
                       type="checkbox"
@@ -1081,7 +1088,7 @@ const NetworkView: React.FC = () => {
               </div>
               <div className="flex items-center justify-between mt-2">
                 <button
-                  onClick={() => setIpCategoryFilters(new Set(uniqueIpCategories.filter(cat => cat !== 'ipv6')))}
+                  onClick={() => setIpCategoryFilters(new Set(uniqueIpCategories))}
                   className="text-xs text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 transition-colors"
                 >
                   Select all
@@ -1151,31 +1158,177 @@ const NetworkView: React.FC = () => {
             </button>
           )}
           
-          {/* Network Stats Card - Always visible in top right */}
-          <div className="absolute right-4 top-4 z-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-4 min-w-[240px]">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
-              Network Overview
-            </h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600 dark:text-gray-400">Nodes:</span>
-                <span className="font-medium text-gray-900 dark:text-gray-100">{filteredData.nodes.length}</span>
+          {/* Unified Network Overview Panel - Compact and informative */}
+          <div className="absolute right-4 top-4 z-10">
+            <div className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden">
+              {/* Compact Header with Real-time Status */}
+              <div className="px-4 py-2.5 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-750 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Network Overview</h3>
+                  </div>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    {useCustomTimeRange && startDate && endDate ? 
+                      `${new Date(startDate).toLocaleTimeString()} - ${new Date(endDate).toLocaleTimeString()}` : 
+                      `Last ${timeRangeFilter}`
+                    }
+                  </span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600 dark:text-gray-400">Connections:</span>
-                <span className="font-medium text-gray-900 dark:text-gray-100">{filteredData.links.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600 dark:text-gray-400">Total Traffic:</span>
-                <span className="font-medium text-gray-900 dark:text-gray-100">
-                  {formatBytes(filteredData.nodes.reduce((sum, node) => sum + node.totalBytes, 0))}
-                </span>
-              </div>
-              <div className="pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  Time Range: {useCustomTimeRange && startDate && endDate ? 
-                    'Custom' : timeRangeFilter
-                  }
+              
+              {/* Main Stats Grid - Compact 2x2 Layout */}
+              <div className="p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Active Nodes */}
+                  <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-2.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">Active Nodes</span>
+                      <svg className="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    </div>
+                    <div className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                      {filteredData.nodes.length}
+                      <span className="text-xs text-gray-500 dark:text-gray-400 font-normal ml-1">/ {nodes.length}</span>
+                    </div>
+                  </div>
+                  
+                  {/* Active Connections */}
+                  <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-2.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">Connections</span>
+                      <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                    </div>
+                    <div className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                      {filteredData.links.length}
+                      <span className="text-xs text-gray-500 dark:text-gray-400 font-normal ml-1">flows</span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Traffic Volume Bar */}
+                <div className="mt-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg p-2.5">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Total Traffic</span>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      {formatBytes(filteredData.nodes.reduce((sum, node) => sum + node.totalBytes, 0))}
+                    </span>
+                  </div>
+                  
+                  {/* Traffic Type Distribution Bar */}
+                  <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div className="h-full flex">
+                      {(() => {
+                        const virtualBytes = filteredData.links
+                          .filter(link => (link as any).trafficType === 'virtual')
+                          .reduce((sum, link) => sum + (link as any).totalBytes, 0);
+                        const subnetBytes = filteredData.links
+                          .filter(link => (link as any).trafficType === 'subnet')
+                          .reduce((sum, link) => sum + (link as any).totalBytes, 0);
+                        const physicalBytes = filteredData.links
+                          .filter(link => (link as any).trafficType === 'physical')
+                          .reduce((sum, link) => sum + (link as any).totalBytes, 0);
+                        const totalBytes = virtualBytes + subnetBytes + physicalBytes;
+                        
+                        if (totalBytes === 0) return <div className="w-full h-full bg-gray-300 dark:bg-gray-600"></div>;
+                        
+                        const virtualPercent = (virtualBytes / totalBytes) * 100;
+                        const subnetPercent = (subnetBytes / totalBytes) * 100;
+                        const physicalPercent = (physicalBytes / totalBytes) * 100;
+                        
+                        return (
+                          <>
+                            {virtualPercent > 0 && (
+                              <div 
+                                className="h-full bg-blue-500 transition-all duration-300" 
+                                style={{ width: `${virtualPercent}%` }}
+                                title={`Virtual: ${formatBytes(virtualBytes)} (${virtualPercent.toFixed(1)}%)`}
+                              />
+                            )}
+                            {subnetPercent > 0 && (
+                              <div 
+                                className="h-full bg-green-500 transition-all duration-300" 
+                                style={{ width: `${subnetPercent}%` }}
+                                title={`Subnet: ${formatBytes(subnetBytes)} (${subnetPercent.toFixed(1)}%)`}
+                              />
+                            )}
+                            {physicalPercent > 0 && (
+                              <div 
+                                className="h-full bg-purple-500 transition-all duration-300" 
+                                style={{ width: `${physicalPercent}%` }}
+                                title={`Physical: ${formatBytes(physicalBytes)} (${physicalPercent.toFixed(1)}%)`}
+                              />
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                  
+                  {/* Traffic Type Legend */}
+                  <div className="flex items-center justify-between mt-2 text-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                        <span className="text-gray-600 dark:text-gray-400">Virtual</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <span className="text-gray-600 dark:text-gray-400">Subnet</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                        <span className="text-gray-600 dark:text-gray-400">Physical</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Quick Stats Row */}
+                <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                  {/* Protocol Distribution */}
+                  <div className="text-center">
+                    <div className="text-gray-500 dark:text-gray-400 mb-0.5">Protocols</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      {(() => {
+                        const protocols = new Set(filteredData.links.map(l => (l as any).protocol));
+                        return protocols.size;
+                      })()}
+                    </div>
+                  </div>
+                  
+                  {/* Average Bandwidth */}
+                  <div className="text-center">
+                    <div className="text-gray-500 dark:text-gray-400 mb-0.5">Avg/Node</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">
+                      {filteredData.nodes.length > 0 
+                        ? formatBytes(filteredData.nodes.reduce((sum, node) => sum + node.totalBytes, 0) / filteredData.nodes.length)
+                        : '0 B'
+                      }
+                    </div>
+                  </div>
+                  
+                  {/* Peak Node */}
+                  <div className="text-center">
+                    <div className="text-gray-500 dark:text-gray-400 mb-0.5">Peak Node</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100 truncate px-1" title={
+                      filteredData.nodes.length > 0 
+                        ? filteredData.nodes.reduce((max, node) => node.totalBytes > max.totalBytes ? node : max).displayName
+                        : 'None'
+                    }>
+                      {filteredData.nodes.length > 0 
+                        ? (() => {
+                            const peakNode = filteredData.nodes.reduce((max, node) => node.totalBytes > max.totalBytes ? node : max);
+                            const name = peakNode.displayName;
+                            return name.length > 12 ? name.substring(0, 10) + '...' : name;
+                          })()
+                        : 'None'
+                      }
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

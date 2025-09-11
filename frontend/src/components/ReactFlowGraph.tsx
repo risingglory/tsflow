@@ -18,7 +18,6 @@ import {
   BackgroundVariant,
   Controls,
   MiniMap,
-  Panel,
   ConnectionMode,
   NodeMouseHandler,
   EdgeMouseHandler,
@@ -471,14 +470,6 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
 
   // Removed custom arrow markers - using clean lines without arrows
 
-  // Format bytes for display
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-  };
 
   // Show error state
   if (error) {
@@ -582,33 +573,6 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
         />
 
 
-        {/* Enhanced Legend Panel */}
-        <Panel position="bottom-left" className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-lg p-3 border border-gray-200 dark:border-gray-700">
-          <h4 className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Traffic Types</h4>
-          <div className="space-y-2 text-xs">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <div className="w-6 h-0.5 bg-blue-500 rounded"></div>
-                <span>Virtual</span>
-              </div>
-              <span className="text-gray-500 dark:text-gray-400">{formatBytes(trafficStats.virtualBytes)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <div className="w-6 h-0.5 bg-green-500 rounded"></div>
-                <span>Subnet</span>
-              </div>
-              <span className="text-gray-500 dark:text-gray-400">{formatBytes(trafficStats.subnetBytes)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <div className="w-6 h-0.5 bg-yellow-500 rounded" style={{borderStyle: 'dashed'}}></div>
-                <span>Physical</span>
-              </div>
-              <span className="text-gray-500 dark:text-gray-400">{formatBytes(trafficStats.physicalBytes)}</span>
-            </div>
-          </div>
-        </Panel>
 
         </ReactFlow>
       </div>

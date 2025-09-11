@@ -81,7 +81,7 @@ export const categorizeNode = (node: BaseNetworkNode): NodeCategory => {
   if (tags.some(tag => tag.includes('derp'))) return NodeCategory.DERP;
   if (tags.some(tag => tag.includes('tailscale')) || node.isTailscale) return NodeCategory.TAILSCALE;
   if (tags.some(tag => tag.includes('private'))) return NodeCategory.PRIVATE;
-  if (tags.some(tag => tag.includes('ipv6')) || node.ips?.some(ip => ip.includes(':'))) return NodeCategory.IPV6;
+  if (tags.some(tag => tag.includes('public'))) return NodeCategory.PUBLIC;
   if (tags.some(tag => tag.includes('server')) || node.incomingPorts.size > 3) return NodeCategory.SERVER;
   if (node.outgoingPorts.size > node.incomingPorts.size) return NodeCategory.CLIENT;
   

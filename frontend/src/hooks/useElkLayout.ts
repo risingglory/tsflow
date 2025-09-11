@@ -30,6 +30,7 @@ interface UseElkLayoutReturn {
 const DEFAULT_NODE_WIDTH = 280;
 const DEFAULT_NODE_HEIGHT = 140;
 const MIN_NODE_WIDTH = 240;
+const MAX_NODE_WIDTH = 480; // Allow nodes to grow for long names
 const MIN_NODE_HEIGHT = 120;
 
 export const useElkLayout = (): UseElkLayoutReturn => {
@@ -61,13 +62,20 @@ export const useElkLayout = (): UseElkLayoutReturn => {
       
       ctx.font = '14px Inter, system-ui, sans-serif';
       
-      // Base width calculation from display name
+      // Enhanced width calculation from display name with better padding
       const displayName = data.displayName || data.id || '';
       const nameWidth = ctx.measureText(displayName).width;
-      const baseWidth = Math.max(MIN_NODE_WIDTH, nameWidth + 120); // Add space for traffic info
+      // Allow more space for name + traffic info + padding (increased from 120 to 160)
+      const baseWidth = Math.max(MIN_NODE_WIDTH, nameWidth + 160);
       
       let maxWidth = baseWidth;
       let contentHeight = 60; // Base header height with margins
+      
+      // Account for potential line wrapping if name is very long
+      const estimatedLines = Math.ceil(nameWidth / (MAX_NODE_WIDTH - 120));
+      if (estimatedLines > 1) {
+        contentHeight += (estimatedLines - 1) * 22; // Add height for wrapped lines
+      }
       
       // Calculate IP addresses width and height
       const allIPs = data.ips || [data.ip];
@@ -135,7 +143,7 @@ export const useElkLayout = (): UseElkLayoutReturn => {
       // Footer
       contentHeight += 40;
       
-      width = Math.max(maxWidth, MIN_NODE_WIDTH);
+      width = Math.min(Math.max(maxWidth, MIN_NODE_WIDTH), MAX_NODE_WIDTH);
       height = Math.max(contentHeight, MIN_NODE_HEIGHT);
       
       // No maximum constraints - fully dynamic sizing
