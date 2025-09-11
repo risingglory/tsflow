@@ -7,7 +7,8 @@ import {
   Download, 
   Search,
   ArrowDown,
-  Loader
+  Loader,
+  X
 } from 'lucide-react'
 import type { NetworkFlowLog, TrafficFlow } from '@/types/tailscale'
 
@@ -43,8 +44,11 @@ interface LogViewerProps {
   searchQuery?: string
   protocolFilters?: Set<string>
   trafficTypeFilters?: Set<string>
+  selectedNode?: { id: string; displayName: string; ips?: string[]; ip: string } | null
+  selectedLink?: { source: string; target: string; originalSource: string; originalTarget: string } | null
   onSelectLog?: (entry: LogEntry) => void
   onHeightChange?: (height: number) => void
+  onClearSelection?: () => void
 }
 
 // Worker for heavy data processing
@@ -183,8 +187,11 @@ const LogViewer: React.FC<LogViewerProps> = ({
   searchQuery = '',
   protocolFilters = new Set(),
   trafficTypeFilters = new Set(),
+  selectedNode,
+  selectedLink,
   onSelectLog,
-  onHeightChange
+  onHeightChange,
+  onClearSelection
 }) => {
   const [isExpanded, setIsExpanded] = useState(false)
   const [panelHeight, setPanelHeight] = useState(300)
@@ -460,6 +467,23 @@ const LogViewer: React.FC<LogViewerProps> = ({
             {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
             <span>Network Logs ({filteredLogs.length.toLocaleString()} entries)</span>
             {isProcessing && <Loader className="w-4 h-4 animate-spin" />}
+            {(selectedNode || selectedLink) && (
+              <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs rounded-full">
+                <span>{selectedNode ? `Filtered by ${selectedNode.displayName}` : 'Filtered by connection'}</span>
+                {onClearSelection && (
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onClearSelection()
+                    }}
+                    className="hover:bg-blue-200 dark:hover:bg-blue-800 rounded-full p-0.5"
+                    title="Clear filter"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            )}
           </button>
 
           {isExpanded && (

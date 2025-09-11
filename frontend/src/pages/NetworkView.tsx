@@ -558,6 +558,47 @@ const NetworkView: React.FC = () => {
     }
   }, [networkLogs, devices, servicesRecords])
 
+  // Filter network logs based on selected node/link
+  const filteredNetworkLogs = useMemo(() => {
+    if (!selectedNode && !selectedLink) {
+      return networkLogs
+    }
+
+    return networkLogs.filter(log => {
+      const allTraffic = [
+        ...(log.virtualTraffic || []).map((t: any) => ({ ...t, type: 'virtual' })),
+        ...(log.subnetTraffic || []).map((t: any) => ({ ...t, type: 'subnet' })),
+        ...(log.physicalTraffic || []).map((t: any) => ({ ...t, type: 'physical' }))
+      ]
+
+      return allTraffic.some(traffic => {
+        const srcIP = extractIP(traffic.src)
+        const dstIP = extractIP(traffic.dst)
+
+        if (selectedNode) {
+          // Check if this traffic involves the selected node
+          const nodeIPs = selectedNode.ips || [selectedNode.ip]
+          return nodeIPs.some(ip => ip === srcIP || ip === dstIP)
+        }
+
+        if (selectedLink) {
+          // Check if this traffic matches the selected link
+          const linkSourceIP = typeof selectedLink.source === 'string' ? 
+            selectedLink.originalSource : 
+            selectedLink.originalSource
+          const linkTargetIP = typeof selectedLink.target === 'string' ? 
+            selectedLink.originalTarget : 
+            selectedLink.originalTarget
+          
+          return (srcIP === linkSourceIP && dstIP === linkTargetIP) ||
+                 (srcIP === linkTargetIP && dstIP === linkSourceIP)
+        }
+
+        return false
+      })
+    })
+  }, [networkLogs, selectedNode, selectedLink])
+
   // Apply filters
   const filteredData = useMemo(() => {
     let filteredNodes = nodes.filter(node => {
@@ -1339,12 +1380,22 @@ const NetworkView: React.FC = () => {
       
       {/* Log Viewer */}
       <LogViewer
-        networkLogs={networkLogs as any[]}
+        networkLogs={filteredNetworkLogs as any[]}
         devices={devices}
         searchQuery={searchQuery}
         protocolFilters={protocolFilters}
         trafficTypeFilters={trafficTypeFilters}
         onHeightChange={setLogViewerHeight}
+        selectedNode={selectedNode}
+        selectedLink={selectedLink ? {
+          ...selectedLink,
+          source: typeof selectedLink.source === 'string' ? selectedLink.source : selectedLink.source.id,
+          target: typeof selectedLink.target === 'string' ? selectedLink.target : selectedLink.target.id
+        } : null}
+        onClearSelection={() => {
+          setSelectedNode(null)
+          setSelectedLink(null)
+        }}
         onSelectLog={(logEntry) => {
           // Highlight the corresponding nodes in the graph
           const srcNode = nodes.find(n => 
