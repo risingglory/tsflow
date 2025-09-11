@@ -8,8 +8,12 @@ import (
 )
 
 func IsRetryable(err error) bool {
-	if err == nil || err == context.DeadlineExceeded {
-		return true
+	if err == nil {
+		return false
+	}
+	
+	if err == context.DeadlineExceeded {
+		return false
 	}
 	
 	errStr := err.Error()

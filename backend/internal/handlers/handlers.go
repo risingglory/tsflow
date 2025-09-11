@@ -94,12 +94,14 @@ func (h *Handlers) GetNetworkLogs(c *gin.Context) {
 	}
 
 	if et.Before(st) {
-		c.JSON(400, gin.H{"error": "end time before start time"})
+		log.Printf("ERROR GetNetworkLogs: end time before start time: %s < %s", end, start)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "end time before start time"})
 		return
 	}
 
 	now := time.Now()
 	if st.After(now) {
+		log.Printf("ERROR GetNetworkLogs: future start time not allowed: %s", start)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "future start time not allowed"})
 		return
 	}
@@ -180,6 +182,7 @@ func (h *Handlers) GetDeviceFlows(c *gin.Context) {
 
 	flows, err := h.tailscaleService.GetDeviceFlows(deviceID)
 	if err != nil {
+		log.Printf("ERROR GetDeviceFlows failed for device %s: %v", deviceID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to fetch device flows",
 			"message": err.Error(),
@@ -193,6 +196,7 @@ func (h *Handlers) GetDeviceFlows(c *gin.Context) {
 func (h *Handlers) GetDNSNameservers(c *gin.Context) {
 	nameservers, err := h.tailscaleService.GetDNSNameservers()
 	if err != nil {
+		log.Printf("ERROR GetDNSNameservers failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to fetch DNS nameservers",
 			"message": err.Error(),

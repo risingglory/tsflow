@@ -1,5 +1,4 @@
 import React from 'react'
-// @ts-ignore - Temporarily ignore React Flow type issues while we fix them
 import ReactFlowGraph from './ReactFlowGraph'
 
 // Re-export the interfaces to maintain compatibility
@@ -48,7 +47,6 @@ interface NetworkGraphProps {
 }
 
 const NetworkGraph: React.FC<NetworkGraphProps> = (props) => {
-  // @ts-ignore - Temporarily ignore React Flow type issues
   return <ReactFlowGraph {...props} />
 }
 

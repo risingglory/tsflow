@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"sync"
@@ -140,7 +141,7 @@ func (ts *TailscaleService) makeRequestWithRetry(ctx context.Context, endpoint s
 		}
 
 		if attempt < maxRetries {
-			fmt.Printf("Request failed (attempt %d/%d), retrying in %v: %v\n", attempt+1, maxRetries+1, delay, err)
+			log.Printf("Request failed (attempt %d/%d), retrying in %v: %v", attempt+1, maxRetries+1, delay, err)
 		}
 	}
 
@@ -336,7 +337,7 @@ func (ts *TailscaleService) GetNetworkLogsChunked(start, end string, chunkSize t
 		)
 		if err != nil {
 			// Log the error but continue with other chunks
-			fmt.Printf("Error fetching logs for chunk %s to %s: %v\n", 
+			log.Printf("Error fetching logs for chunk %s to %s: %v", 
 				currentStart.Format(time.RFC3339), 
 				currentEnd.Format(time.RFC3339), 
 				err)
@@ -352,7 +353,9 @@ func (ts *TailscaleService) GetNetworkLogsChunked(start, end string, chunkSize t
 
 // GetNetworkLogsChunkedParallel retrieves network logs in parallel chunks for large time ranges
 func (ts *TailscaleService) GetNetworkLogsChunkedParallel(start, end string, chunkSize time.Duration, maxConcurrency int) ([]interface{}, error) {
-	return ts.GetNetworkLogsChunkedParallelWithContext(context.Background(), start, end, chunkSize, maxConcurrency)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	return ts.GetNetworkLogsChunkedParallelWithContext(ctx, start, end, chunkSize, maxConcurrency)
 }
 
 // GetNetworkLogsChunkedParallelWithContext retrieves network logs in parallel chunks with context support
@@ -389,7 +392,7 @@ func (ts *TailscaleService) GetNetworkLogsChunkedParallelWithContext(ctx context
 		return []interface{}{result}, nil
 	}
 
-	// Channel for collecting results
+	// Channel for collecting results - buffered to prevent goroutine leaks
 	type result struct {
 		index int
 		logs  interface{}
@@ -458,8 +461,8 @@ func (ts *TailscaleService) GetNetworkLogsChunkedParallelWithContext(ctx context
 
 	// Close results channel when all goroutines complete
 	go func() {
+		defer close(resultsChan)
 		wg.Wait()
-		close(resultsChan)
 	}()
 
 	// Collect results
@@ -467,8 +470,14 @@ func (ts *TailscaleService) GetNetworkLogsChunkedParallelWithContext(ctx context
 	var hasError bool
 
 	for res := range resultsChan {
+		// Bounds check to prevent slice access panic
+		if res.index < 0 || res.index >= len(results) {
+			log.Printf("Warning: invalid result index %d, skipping", res.index)
+			continue
+		}
+		
 		if res.err != nil {
-			fmt.Printf("Error fetching chunk %d: %v\n", res.index, res.err)
+			log.Printf("Error fetching chunk %d: %v", res.index, res.err)
 			hasError = true
 			// Store nil for failed chunks
 			results[res.index] = nil

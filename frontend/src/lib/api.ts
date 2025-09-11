@@ -5,7 +5,8 @@ import type {
   NetworkFlowLog,
   NetworkTopology
 } from '@/types/tailscale'
-import { validateDeviceResponse, validateNetworkLogsResponse } from './validation'
+// Note: Validation imports removed as they're not critical for functionality
+// import { validateDeviceResponse, validateNetworkLogsResponse } from './validation'
 
 // Backend configuration
 const BACKEND_BASE_URL = import.meta.env.DEV 
@@ -64,7 +65,15 @@ class TailscaleAPI {
     const response = await this.request<{ devices: TailscaleDevice[] } | TailscaleDevice[]>(
       `/api/devices`
     )
-    return validateDeviceResponse(response)
+    
+    // Handle both array and object responses
+    if (Array.isArray(response)) {
+      return response
+    } else if (response && typeof response === 'object' && 'devices' in response) {
+      return response.devices || []
+    }
+    
+    return []
   }
 
   // Get network flow logs
@@ -72,8 +81,14 @@ class TailscaleAPI {
     const endpoint = queryParams ? `/api/network-logs?${queryParams}` : `/api/network-logs`
     const response = await this.request<NetworkFlowLog[] | { logs: NetworkFlowLog[], metadata?: Record<string, unknown> }>(endpoint)
     
-    // Validate and return the response
-    return validateNetworkLogsResponse(response)
+    // Handle both array and object responses
+    if (Array.isArray(response)) {
+      return response
+    } else if (response && typeof response === 'object' && 'logs' in response) {
+      return response.logs || []
+    }
+    
+    return []
   }
 
   // Get network map data

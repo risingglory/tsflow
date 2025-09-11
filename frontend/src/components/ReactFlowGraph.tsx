@@ -24,6 +24,8 @@ import {
   OnConnect,
   useReactFlow,
   ReactFlowProvider,
+  Node,
+  Edge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -145,8 +147,8 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
   selectedLink,
 }) => {
   const { effectiveTheme } = useTheme();
-  const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<NetworkNodeData>>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge<NetworkLinkData>>([]);
   const [_isLayouting, setIsLayouting] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   
@@ -198,8 +200,7 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
 
     try {
       // Convert nodes with enhanced data
-      // @ts-ignore - Suppress React Flow typing issues temporarily
-      const reactFlowNodes = inputNodes.map((node) => ({
+      const reactFlowNodes: Node<NetworkNodeData>[] = inputNodes.map((node) => ({
         id: node.id,
         type: 'networkDevice',
         position: { x: 0, y: 0 }, // Will be set by layout
@@ -215,8 +216,7 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
       }));
 
       // Convert edges with enhanced data
-      // @ts-ignore - Suppress React Flow typing issues temporarily
-      const reactFlowEdges = inputLinks.map((link, index) => {
+      const reactFlowEdges: Edge<NetworkLinkData>[] = inputLinks.map((link, index) => {
         const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
         const targetId = typeof link.target === 'string' ? link.target : link.target.id;
         
@@ -255,8 +255,8 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
           );
 
           // Use floating connection points - React Flow will calculate optimal positions
-          setNodes(layoutedNodes);
-          setEdges(layoutedEdges);
+          setNodes(layoutedNodes as Node<NetworkNodeData>[]);
+          setEdges(layoutedEdges as Edge<NetworkLinkData>[]);
           
           // Only fit view on initial load or when explicitly requested
           if (shouldFitView) {
@@ -291,8 +291,8 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
                   collisionRadius: 200,
                 }
               );
-              setNodes(forceNodes);
-              setEdges(forceEdges);
+              setNodes(forceNodes as Node<NetworkNodeData>[]);
+              setEdges(forceEdges as Edge<NetworkLinkData>[]);
                   console.log('Force-directed layout applied successfully');
             } catch (forceError) {
               // Final fallback to grid layout
@@ -310,7 +310,8 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
               
               setNodes(fallbackNodes);
               setEdges(reactFlowEdges);
-                }
+              console.log('Grid layout applied successfully');
+            }
           }
         }
       }
@@ -330,7 +331,9 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
       isInitialLoadRef.current = false;
     }, 100); // Debounce updates
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+    };
   }, [convertToReactFlowFormat]);
 
   // Reset initial load flag when input nodes/links change (new data loaded)
@@ -430,42 +433,51 @@ const ReactFlowGraphInner: React.FC<ReactFlowGraphProps> = ({
     );
   }, [nodes, reactFlowInstance]);
 
-  // Update highlighting when selection changes
+  // Update highlighting when selection changes with debouncing to prevent race conditions
   useEffect(() => {
-    if (selectedNode) {
-      const connectedNodeIds = new Set<string>([selectedNode.id]);
-      const connectedEdgeIds = new Set<string>();
-      
-      edges.forEach(edge => {
-        if (edge.source === selectedNode.id || edge.target === selectedNode.id) {
-          connectedEdgeIds.add(edge.id);
-          connectedNodeIds.add(edge.source);
-          connectedNodeIds.add(edge.target);
-        }
-      });
-      
-      setHighlightedNodes(connectedNodeIds);
-      setHighlightedEdges(connectedEdgeIds);
-      
-      // Focus on selected node and its connections
-      focusOnSelection(Array.from(connectedNodeIds));
-    } else if (selectedLink) {
-      const sourceId = typeof selectedLink.source === 'string' ? selectedLink.source : selectedLink.source.id;
-      const targetId = typeof selectedLink.target === 'string' ? selectedLink.target : selectedLink.target.id;
-      
-      const selectedEdgeId = edges.find(edge => 
-        edge.source === sourceId && edge.target === targetId
-      )?.id;
-      
-      setHighlightedNodes(new Set([sourceId, targetId]));
-      setHighlightedEdges(selectedEdgeId ? new Set([selectedEdgeId]) : new Set());
-      
-      // Focus on linked nodes
-      focusOnSelection([sourceId, targetId]);
-    } else {
-      setHighlightedNodes(new Set());
-      setHighlightedEdges(new Set());
-    }
+    const updateHighlighting = () => {
+      if (selectedNode) {
+        const connectedNodeIds = new Set<string>([selectedNode.id]);
+        const connectedEdgeIds = new Set<string>();
+        
+        // Use current edges state to avoid stale closures
+        edges.forEach(edge => {
+          if (edge.source === selectedNode.id || edge.target === selectedNode.id) {
+            connectedEdgeIds.add(edge.id);
+            connectedNodeIds.add(edge.source);
+            connectedNodeIds.add(edge.target);
+          }
+        });
+        
+        setHighlightedNodes(connectedNodeIds);
+        setHighlightedEdges(connectedEdgeIds);
+        
+        // Focus on selected node and its connections
+        focusOnSelection(Array.from(connectedNodeIds));
+      } else if (selectedLink) {
+        const sourceId = typeof selectedLink.source === 'string' ? selectedLink.source : selectedLink.source.id;
+        const targetId = typeof selectedLink.target === 'string' ? selectedLink.target : selectedLink.target.id;
+        
+        const selectedEdgeId = edges.find(edge => 
+          edge.source === sourceId && edge.target === targetId
+        )?.id;
+        
+        setHighlightedNodes(new Set([sourceId, targetId]));
+        setHighlightedEdges(selectedEdgeId ? new Set([selectedEdgeId]) : new Set());
+        
+        // Focus on linked nodes
+        focusOnSelection([sourceId, targetId]);
+      } else {
+        setHighlightedNodes(new Set());
+        setHighlightedEdges(new Set());
+      }
+    };
+
+    // Debounce to prevent rapid state updates
+    const timeoutId = setTimeout(updateHighlighting, 50);
+    return () => {
+      clearTimeout(timeoutId);
+    };
   }, [selectedNode, selectedLink, edges, focusOnSelection]);
 
   // Removed custom arrow markers - using clean lines without arrows

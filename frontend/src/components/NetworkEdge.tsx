@@ -56,16 +56,23 @@ const NetworkEdge = memo<EdgeProps>(({
     targetPosition,
   });
 
-  // Get highlighting state from context
+  // Get highlighting state from context with memoization
   const linkData = data as NetworkLinkData;
   const { highlightedEdges, selectedNode, selectedLink } = useSelection();
-  const isHighlighted = highlightedEdges.has(id) || selected;
-  const isSelectedLink = selectedLink && 
-    (typeof selectedLink.source === 'string' ? selectedLink.source : selectedLink.source.id) === linkData.source &&
-    (typeof selectedLink.target === 'string' ? selectedLink.target : selectedLink.target.id) === linkData.target;
-  const isSelected = isSelectedLink || selected;
-  const hasSelection = selectedNode !== null || selectedLink !== null;
-  const isDimmed = hasSelection && !isHighlighted;
+  
+  const selectionState = useMemo(() => {
+    const isHighlighted = highlightedEdges.has(id) || selected;
+    const isSelectedLink = selectedLink && 
+      (typeof selectedLink.source === 'string' ? selectedLink.source : selectedLink.source.id) === linkData?.source &&
+      (typeof selectedLink.target === 'string' ? selectedLink.target : selectedLink.target.id) === linkData?.target;
+    const isSelected = isSelectedLink || selected;
+    const hasSelection = selectedNode !== null || selectedLink !== null;
+    const isDimmed = hasSelection && !isHighlighted;
+    
+    return { isHighlighted, isSelected, isDimmed, hasSelection };
+  }, [highlightedEdges, selectedNode, selectedLink, selected, id, linkData]);
+  
+  const { isHighlighted, isSelected, isDimmed } = selectionState;
 
   // Memoize edge styling calculations
   const edgeStyle = useMemo(() => {
@@ -154,8 +161,8 @@ const NetworkEdge = memo<EdgeProps>(({
         }}
       />
       
-      {/* Enhanced edge label with traffic information */}
-      {data && selected && formattedData && (
+      {/* Enhanced edge label with traffic information - only show when selected or highlighted */}
+      {data && (selected || isHighlighted) && formattedData && (
         <EdgeLabelRenderer>
           <div
             style={{

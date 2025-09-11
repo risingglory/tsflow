@@ -175,18 +175,18 @@ const NetworkNode = memo<NodeProps>(({ data, selected }) => {
         zIndex: isHighlighted ? 10 : 1,
       }}
     >
-      {/* Invisible handles for connections */}
+      {/* Invisible handles for connections - centered properly */}
       <Handle 
         type="source" 
         position={Position.Top}
-        className="!opacity-0 !pointer-events-none !w-0 !h-0"
-        style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
+        className="!opacity-0 !pointer-events-none"
+        style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: 1, height: 1 }}
       />
       <Handle 
         type="target" 
-        position={Position.Top}
-        className="!opacity-0 !pointer-events-none !w-0 !h-0"
-        style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
+        position={Position.Bottom}
+        className="!opacity-0 !pointer-events-none" 
+        style={{ left: '50%', bottom: '50%', transform: 'translate(-50%, 50%)', width: 1, height: 1 }}
       />
       
       {/* Header Section */}

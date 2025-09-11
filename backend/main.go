@@ -68,7 +68,8 @@ func main() {
 
 	corsConfig := cors.DefaultConfig()
 	if cfg.Environment == "production" {
-		corsConfig.AllowAllOrigins = true
+		corsConfig.AllowOrigins = []string{"https://tsflow.production.com"}
+		corsConfig.AllowAllOrigins = false
 	} else {
 		corsConfig.AllowOrigins = []string{"http://localhost:3000", "http://localhost:5173"}
 	}

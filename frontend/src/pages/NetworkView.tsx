@@ -250,7 +250,16 @@ const NetworkView: React.FC = () => {
   })
 
   const devices = useMemo(() => {
-    return (Array.isArray(deviceData) && deviceData.length > 0 && 'name' in deviceData[0]) ? deviceData as TailscaleDevice[] : []
+    if (!Array.isArray(deviceData) || deviceData.length === 0) {
+      return []
+    }
+    
+    // Type guard to check if it's a TailscaleDevice array
+    if ('name' in deviceData[0] && 'addresses' in deviceData[0]) {
+      return deviceData as TailscaleDevice[]
+    }
+    
+    return []
   }, [deviceData])
 
   // Fetch Tailscale services and records
@@ -331,7 +340,21 @@ const NetworkView: React.FC = () => {
   })
 
   const networkLogs = useMemo(() => {
-    return (Array.isArray(networkLogsData) && networkLogsData.length > 0 && 'logged' in networkLogsData[0]) ? networkLogsData as any[] : []
+    if (!networkLogsData) {
+      return []
+    }
+    
+    // Handle both array and object responses from API
+    let logsArray: any[] = []
+    
+    if (Array.isArray(networkLogsData)) {
+      logsArray = networkLogsData
+    } else if (typeof networkLogsData === 'object' && 'logs' in networkLogsData) {
+      logsArray = (networkLogsData as any).logs || []
+    }
+    
+    // Validate that we have actual log entries
+    return logsArray.filter(log => log && typeof log === 'object' && 'logged' in log)
   }, [networkLogsData])
 
   // Set default date range to show most recent data (last 5 minutes)
@@ -765,7 +788,11 @@ const NetworkView: React.FC = () => {
   const [filtersInitialized, setFiltersInitialized] = useState(false)
   
   useEffect(() => {
-    if (!filtersInitialized && uniqueProtocols.length > 0 && uniqueTrafficTypes.length > 0 && uniqueIpCategories.length > 0) {
+    if (filtersInitialized) {
+      return // Already initialized
+    }
+    
+    if (uniqueProtocols.length > 0 && uniqueTrafficTypes.length > 0 && uniqueIpCategories.length > 0) {
       setProtocolFilters(new Set(uniqueProtocols.filter(proto => proto !== 'Proto-99'))) // Exclude Proto-99 from default selection
       setTrafficTypeFilters(new Set(uniqueTrafficTypes))
       setIpCategoryFilters(new Set(uniqueIpCategories.filter(cat => cat !== 'derp'))) // Hide derp by default
@@ -1276,9 +1303,9 @@ const NetworkView: React.FC = () => {
                         
                         if (totalBytes === 0) return <div className="w-full h-full bg-gray-300 dark:bg-gray-600"></div>;
                         
-                        const virtualPercent = (virtualBytes / totalBytes) * 100;
-                        const subnetPercent = (subnetBytes / totalBytes) * 100;
-                        const physicalPercent = (physicalBytes / totalBytes) * 100;
+                        const virtualPercent = totalBytes > 0 ? (virtualBytes / totalBytes) * 100 : 0;
+                        const subnetPercent = totalBytes > 0 ? (subnetBytes / totalBytes) * 100 : 0;
+                        const physicalPercent = totalBytes > 0 ? (physicalBytes / totalBytes) * 100 : 0;
                         
                         return (
                           <>
