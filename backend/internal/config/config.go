@@ -23,7 +23,7 @@ type Config struct {
 func Load() *Config {
 	return &Config{
 		TailscaleAPIKey:            os.Getenv("TAILSCALE_API_KEY"),
-		TailscaleTailnet:           os.Getenv("TAILSCALE_TAILNET"),
+		TailscaleTailnet:           getEnvWithDefault("TAILSCALE_TAILNET", "-"),
 		TailscaleAPIURL:            getEnvWithDefault("TAILSCALE_API_URL", "https://api.tailscale.com"),
 		TailscaleOAuthClientID:     os.Getenv("TAILSCALE_OAUTH_CLIENT_ID"),
 		TailscaleOAuthClientSecret: os.Getenv("TAILSCALE_OAUTH_CLIENT_SECRET"),
@@ -35,10 +35,6 @@ func Load() *Config {
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
-	if c.TailscaleTailnet == "" {
-		return errors.New("TAILSCALE_TAILNET is required")
-	}
-
 	hasAPIKey := c.TailscaleAPIKey != ""
 	hasOAuth := c.TailscaleOAuthClientID != "" && c.TailscaleOAuthClientSecret != ""
 

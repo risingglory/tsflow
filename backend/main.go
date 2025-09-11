@@ -82,6 +82,7 @@ func main() {
 	api := router.Group("/api")
 	{
 		api.GET("/devices", handlerService.GetDevices)
+		api.GET("/services-records", handlerService.GetServicesAndRecords)
 		api.GET("/network-logs", handlerService.GetNetworkLogs)
 		api.GET("/network-map", handlerService.GetNetworkMap)
 		api.GET("/devices/:deviceId/flows", handlerService.GetDeviceFlows)

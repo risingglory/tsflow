@@ -42,6 +42,30 @@ func (h *Handlers) GetDevices(c *gin.Context) {
 	c.JSON(http.StatusOK, devices)
 }
 
+func (h *Handlers) GetServicesAndRecords(c *gin.Context) {
+	// Fetch VIP services
+	vipServices, servicesErr := h.tailscaleService.GetVIPServices()
+	if servicesErr != nil {
+		log.Printf("WARNING GetVIPServices failed: %v", servicesErr)
+		vipServices = make(map[string]services.VIPServiceInfo)
+	}
+	
+	// Fetch static records
+	staticRecords, recordsErr := h.tailscaleService.GetStaticRecords()
+	if recordsErr != nil {
+		log.Printf("WARNING GetStaticRecords failed: %v", recordsErr)
+		staticRecords = make(map[string]services.StaticRecordInfo)
+	}
+	
+	response := gin.H{
+		"services": vipServices,
+		"records":  staticRecords,
+	}
+	
+	log.Printf("SUCCESS GetServicesAndRecords: returned %d services and %d records", len(vipServices), len(staticRecords))
+	c.JSON(http.StatusOK, response)
+}
+
 func (h *Handlers) GetNetworkLogs(c *gin.Context) {
 	start := c.Query("start")
 	end := c.Query("end")

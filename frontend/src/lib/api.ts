@@ -91,6 +91,11 @@ class TailscaleAPI {
     return await this.request('/api/dns/nameservers')
   }
 
+  // Get services and static records
+  async getServicesAndRecords(): Promise<{ services: Record<string, any>, records: Record<string, any> }> {
+    return await this.request('/api/services-records')
+  }
+
   // Health check
   async healthCheck(): Promise<{ status: string, version?: string }> {
     return await this.request('/health')
@@ -160,6 +165,10 @@ export const fetcher = async (url: string) => {
 
     if (url.startsWith('/network-map')) {
       return await tailscaleAPI.getNetworkMap()
+    }
+    
+    if (url.startsWith('/services-records')) {
+      return await tailscaleAPI.getServicesAndRecords()
     }
     
     if (url.includes('/flows')) {

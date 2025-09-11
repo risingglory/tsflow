@@ -587,3 +587,67 @@ func (ts *TailscaleService) GetDNSNameservers() (map[string]interface{}, error) 
 
 	return result, nil
 }
+
+// VIPServiceInfo represents a VIP service from the Tailscale API
+type VIPServiceInfo struct {
+	Name  string   `json:"name"`
+	Addrs []string `json:"addrs"`
+}
+
+// StaticRecordInfo represents a static DNS record
+type StaticRecordInfo struct {
+	Addrs   []string `json:"addrs"`
+	Comment string   `json:"comment,omitempty"`
+}
+
+// GetVIPServices fetches all VIP services (virtual IP services) for the tailnet
+func (ts *TailscaleService) GetVIPServices() (map[string]VIPServiceInfo, error) {
+	ctx := context.Background()
+	endpoint := fmt.Sprintf("/tailnet/%s/services", url.PathEscape(ts.tailnet))
+	
+	body, err := ts.makeRequest(ctx, endpoint)
+	if err != nil {
+		// VIP services might not be available for all tailnets
+		// Return empty map instead of error for graceful degradation
+		return make(map[string]VIPServiceInfo), nil
+	}
+	
+	var response struct {
+		VIPServices []VIPServiceInfo `json:"vipServices"`
+	}
+	
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse VIP services: %w", err)
+	}
+	
+	// Convert to map keyed by service name for easy lookup
+	services := make(map[string]VIPServiceInfo)
+	for _, svc := range response.VIPServices {
+		services[svc.Name] = svc
+	}
+	
+	return services, nil
+}
+
+// GetStaticRecords fetches all static DNS records for the tailnet
+func (ts *TailscaleService) GetStaticRecords() (map[string]StaticRecordInfo, error) {
+	ctx := context.Background()
+	endpoint := fmt.Sprintf("/tailnet/%s/static-records", url.PathEscape(ts.tailnet))
+	
+	body, err := ts.makeRequest(ctx, endpoint)
+	if err != nil {
+		// Static records might not be available for all tailnets
+		// Return empty map instead of error for graceful degradation
+		return make(map[string]StaticRecordInfo), nil
+	}
+	
+	var response struct {
+		Records map[string]StaticRecordInfo `json:"records"`
+	}
+	
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse static records: %w", err)
+	}
+	
+	return response.Records, nil
+}

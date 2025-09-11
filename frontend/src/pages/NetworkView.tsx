@@ -18,6 +18,16 @@ interface TailscaleDevice {
   lastSeen: string
 }
 
+interface VIPServiceInfo {
+  name: string
+  addrs: string[]
+}
+
+interface StaticRecordInfo {
+  addrs: string[]
+  comment?: string
+}
+
 interface NetworkNode {
   id: string
   ip: string
@@ -155,7 +165,13 @@ const ipMatches = (ip1: string, ip2: string): boolean => {
 }
 
 // Helper function to get device name from IP
-const getDeviceName = (ip: string, devices: TailscaleDevice[] = []): string => {
+const getDeviceName = (
+  ip: string, 
+  devices: TailscaleDevice[] = [], 
+  services: Record<string, VIPServiceInfo> = {}, 
+  records: Record<string, StaticRecordInfo> = {}
+): string => {
+  // Check regular devices first
   const device = devices.find(d => 
     d.addresses.some(addr => ipMatches(ip, addr))
   )
@@ -165,6 +181,27 @@ const getDeviceName = (ip: string, devices: TailscaleDevice[] = []): string => {
     const shortName = device.name.split('.')[0]
     return shortName || device.name
   }
+
+  // Check VIP services
+  for (const [serviceName, serviceInfo] of Object.entries(services)) {
+    if (serviceInfo.addrs && Array.isArray(serviceInfo.addrs)) {
+      if (serviceInfo.addrs.some((addr: string) => ipMatches(ip, addr))) {
+        // Remove "svc:" prefix if present
+        const cleanName = serviceName.startsWith('svc:') ? serviceName.substring(4) : serviceName
+        return `📦 ${cleanName}` // Add icon to indicate it's a service
+      }
+    }
+  }
+
+  // Check static records
+  for (const [recordName, recordInfo] of Object.entries(records)) {
+    if (recordInfo.addrs && Array.isArray(recordInfo.addrs)) {
+      if (recordInfo.addrs.some((addr: string) => ipMatches(ip, addr))) {
+        return `📍 ${recordName}` // Add icon to indicate it's a static record
+      }
+    }
+  }
+
   return ip
 }
 
@@ -211,6 +248,27 @@ const NetworkView: React.FC = () => {
   const devices = useMemo(() => {
     return (Array.isArray(deviceData) && deviceData.length > 0 && 'name' in deviceData[0]) ? deviceData as TailscaleDevice[] : []
   }, [deviceData])
+
+  // Fetch Tailscale services and records
+  const { data: servicesRecordsData } = useSWR('/services-records', fetcher, {
+    errorRetryCount: 2,
+    revalidateOnFocus: false,
+    refreshInterval: 300000 // Refresh every 5 minutes
+  })
+
+  const servicesRecords = useMemo(() => {
+    if (!servicesRecordsData || typeof servicesRecordsData !== 'object') {
+      return { services: {} as Record<string, VIPServiceInfo>, records: {} as Record<string, StaticRecordInfo> }
+    }
+    const data = servicesRecordsData as { 
+      services?: Record<string, VIPServiceInfo>, 
+      records?: Record<string, StaticRecordInfo> 
+    }
+    return {
+      services: data.services || {},
+      records: data.records || {}
+    }
+  }, [servicesRecordsData])
 
   // Fetch Tailscale network logs - refresh when time range changes
   const networkLogsApiUrl = useMemo(() => {
@@ -315,7 +373,7 @@ const NetworkView: React.FC = () => {
         const dstIP = extractIP(traffic.dst)
         
         // Create or update source node (merge by device name for Tailscale devices)
-        const srcDeviceName = getDeviceName(srcIP, devices)
+        const srcDeviceName = getDeviceName(srcIP, devices, servicesRecords.services, servicesRecords.records)
         const srcNodeId = srcDeviceName !== srcIP ? srcDeviceName : srcIP
         if (!nodeMap.has(srcNodeId)) {
           const isTailscale = categorizeIP(srcIP).includes('tailscale')
@@ -368,7 +426,7 @@ const NetworkView: React.FC = () => {
         }
         
         // Create or update destination node (merge by device name for Tailscale devices)
-        const dstDeviceName = getDeviceName(dstIP, devices)
+        const dstDeviceName = getDeviceName(dstIP, devices, servicesRecords.services, servicesRecords.records)
         const dstNodeId = dstDeviceName !== dstIP ? dstDeviceName : dstIP
         if (!nodeMap.has(dstNodeId)) {
           const isTailscale = categorizeIP(dstIP).includes('tailscale')
@@ -494,7 +552,7 @@ const NetworkView: React.FC = () => {
       nodes: Array.from(nodeMap.values()),
       links: Array.from(linkMap.values())
     }
-  }, [networkLogs, devices])
+  }, [networkLogs, devices, servicesRecords])
 
   // Apply filters
   const filteredData = useMemo(() => {
