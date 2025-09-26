@@ -16,13 +16,13 @@ const DeviceList = React.memo(function DeviceList({ devices, loading = false, li
       <div className="space-y-3">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="animate-pulse">
-            <div className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg">
-              <div className="h-8 w-8 bg-gray-200 rounded-full"></div>
+            <div className="flex items-center space-x-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+              <div className="h-8 w-8 bg-gray-200 dark:bg-gray-700 rounded-full"></div>
               <div className="flex-1">
-                <div className="h-4 bg-gray-200 rounded w-24 mb-1"></div>
-                <div className="h-3 bg-gray-200 rounded w-32"></div>
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-24 mb-1"></div>
+                <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-32"></div>
               </div>
-              <div className="h-5 w-12 bg-gray-200 rounded-full"></div>
+              <div className="h-5 w-12 bg-gray-200 dark:bg-gray-700 rounded-full"></div>
             </div>
           </div>
         ))}
@@ -32,8 +32,8 @@ const DeviceList = React.memo(function DeviceList({ devices, loading = false, li
 
   if (!devices || devices.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500">
-        <Monitor className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+      <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+        <Monitor className="h-12 w-12 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
         <p>No devices found</p>
       </div>
     )
@@ -70,18 +70,18 @@ const DeviceList = React.memo(function DeviceList({ devices, loading = false, li
         return (
           <div
             key={device.id}
-            className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+            className="flex items-center space-x-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
           >
             <div className={clsx(
               'p-2 rounded-full',
-              online ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
+              online ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500'
             )}>
               {getDeviceIcon(device.os)}
             </div>
             
             <div className="flex-1 min-w-0">
               <div className="flex items-center space-x-2">
-                <p className="text-sm font-medium text-gray-900 truncate">
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                   {device.name || device.hostname}
                 </p>
                 {device.tags && device.tags.length > 0 && (
@@ -89,18 +89,18 @@ const DeviceList = React.memo(function DeviceList({ devices, loading = false, li
                     {device.tags.slice(0, 2).map((tag) => (
                       <span
                         key={tag}
-                        className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                        className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300"
                       >
                         {tag.replace('tag:', '')}
                       </span>
                     ))}
                     {device.tags.length > 2 && (
-                      <span className="text-xs text-gray-500">+{device.tags.length - 2}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">+{device.tags.length - 2}</span>
                     )}
                   </div>
                 )}
               </div>
-              <div className="flex items-center space-x-2 text-xs text-gray-500">
+              <div className="flex items-center space-x-2 text-xs text-gray-500 dark:text-gray-400">
                 <span>{device.addresses[0]}</span>
                 <span>•</span>
                 <span>{device.os}</span>
@@ -113,8 +113,8 @@ const DeviceList = React.memo(function DeviceList({ devices, loading = false, li
               <span className={clsx(
                 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
                 online
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-gray-100 text-gray-800'
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
               )}>
                 {online ? 'Online' : 'Offline'}
               </span>

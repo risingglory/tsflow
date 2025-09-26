@@ -137,81 +137,81 @@ export interface TagStyle {
 
 export const TAG_STYLES: Record<string, TagStyle> = {
   prod: {
-    backgroundColor: 'bg-red-100',
-    textColor: 'text-red-800',
-    borderColor: 'border-red-300',
+    backgroundColor: 'bg-red-100 dark:bg-red-900/30',
+    textColor: 'text-red-800 dark:text-red-300',
+    borderColor: 'border-red-300 dark:border-red-700',
     icon: '🔴'
   },
   production: {
-    backgroundColor: 'bg-red-100',
-    textColor: 'text-red-800',
-    borderColor: 'border-red-300',
+    backgroundColor: 'bg-red-100 dark:bg-red-900/30',
+    textColor: 'text-red-800 dark:text-red-300',
+    borderColor: 'border-red-300 dark:border-red-700',
     icon: '🔴'
   },
   dev: {
-    backgroundColor: 'bg-yellow-100',
-    textColor: 'text-yellow-800',
-    borderColor: 'border-yellow-300',
+    backgroundColor: 'bg-yellow-100 dark:bg-yellow-900/30',
+    textColor: 'text-yellow-800 dark:text-yellow-300',
+    borderColor: 'border-yellow-300 dark:border-yellow-700',
     icon: '🟡'
   },
   development: {
-    backgroundColor: 'bg-yellow-100',
-    textColor: 'text-yellow-800',
-    borderColor: 'border-yellow-300',
+    backgroundColor: 'bg-yellow-100 dark:bg-yellow-900/30',
+    textColor: 'text-yellow-800 dark:text-yellow-300',
+    borderColor: 'border-yellow-300 dark:border-yellow-700',
     icon: '🟡'
   },
   staging: {
-    backgroundColor: 'bg-orange-100',
-    textColor: 'text-orange-800',
-    borderColor: 'border-orange-300',
+    backgroundColor: 'bg-orange-100 dark:bg-orange-900/30',
+    textColor: 'text-orange-800 dark:text-orange-300',
+    borderColor: 'border-orange-300 dark:border-orange-700',
     icon: '🟠'
   },
   stage: {
-    backgroundColor: 'bg-orange-100',
-    textColor: 'text-orange-800',
-    borderColor: 'border-orange-300',
+    backgroundColor: 'bg-orange-100 dark:bg-orange-900/30',
+    textColor: 'text-orange-800 dark:text-orange-300',
+    borderColor: 'border-orange-300 dark:border-orange-700',
     icon: '🟠'
   },
   server: {
-    backgroundColor: 'bg-green-100',
-    textColor: 'text-green-800',
-    borderColor: 'border-green-300',
+    backgroundColor: 'bg-green-100 dark:bg-green-900/30',
+    textColor: 'text-green-800 dark:text-green-300',
+    borderColor: 'border-green-300 dark:border-green-700',
     icon: '🖥️'
   },
   k8s: {
-    backgroundColor: 'bg-purple-100',
-    textColor: 'text-purple-800',
-    borderColor: 'border-purple-300',
+    backgroundColor: 'bg-purple-100 dark:bg-purple-900/30',
+    textColor: 'text-purple-800 dark:text-purple-300',
+    borderColor: 'border-purple-300 dark:border-purple-700',
     icon: '☸️'
   },
   kubernetes: {
-    backgroundColor: 'bg-purple-100',
-    textColor: 'text-purple-800',
-    borderColor: 'border-purple-300',
+    backgroundColor: 'bg-purple-100 dark:bg-purple-900/30',
+    textColor: 'text-purple-800 dark:text-purple-300',
+    borderColor: 'border-purple-300 dark:border-purple-700',
     icon: '☸️'
   },
   database: {
-    backgroundColor: 'bg-blue-100',
-    textColor: 'text-blue-800',
-    borderColor: 'border-blue-300',
+    backgroundColor: 'bg-blue-100 dark:bg-blue-900/30',
+    textColor: 'text-blue-800 dark:text-blue-300',
+    borderColor: 'border-blue-300 dark:border-blue-700',
     icon: '🗄️'
   },
   web: {
-    backgroundColor: 'bg-teal-100',
-    textColor: 'text-teal-800',
-    borderColor: 'border-teal-300',
+    backgroundColor: 'bg-teal-100 dark:bg-teal-900/30',
+    textColor: 'text-teal-800 dark:text-teal-300',
+    borderColor: 'border-teal-300 dark:border-teal-700',
     icon: '🌐'
   },
   api: {
-    backgroundColor: 'bg-indigo-100',
-    textColor: 'text-indigo-800',
-    borderColor: 'border-indigo-300',
+    backgroundColor: 'bg-indigo-100 dark:bg-indigo-900/30',
+    textColor: 'text-indigo-800 dark:text-indigo-300',
+    borderColor: 'border-indigo-300 dark:border-indigo-700',
     icon: '🔗'
   },
   default: {
-    backgroundColor: 'bg-gray-100',
-    textColor: 'text-gray-800',
-    borderColor: 'border-gray-300',
+    backgroundColor: 'bg-gray-100 dark:bg-gray-700',
+    textColor: 'text-gray-800 dark:text-gray-300',
+    borderColor: 'border-gray-300 dark:border-gray-600',
     icon: '🏷️'
   }
 };
@@ -227,52 +227,52 @@ export interface NodeColorScheme {
 
 export const NODE_COLOR_SCHEMES: Record<NodeCategory, NodeColorScheme> = {
   [NodeCategory.DERP]: {
-    background: 'bg-red-50',
-    border: 'border-red-500',
-    ring: 'ring-red-500',
-    accent: 'text-red-700',
+    background: 'bg-red-50 dark:bg-red-900/20',
+    border: 'border-red-500 dark:border-red-400',
+    ring: 'ring-red-500 dark:ring-red-400',
+    accent: 'text-red-700 dark:text-red-300',
     icon: '🔴'
   },
   [NodeCategory.TAILSCALE]: {
-    background: 'bg-blue-50',
-    border: 'border-blue-500',
-    ring: 'ring-blue-500',
-    accent: 'text-blue-700',
+    background: 'bg-blue-50 dark:bg-blue-900/20',
+    border: 'border-blue-500 dark:border-blue-400',
+    ring: 'ring-blue-500 dark:ring-blue-400',
+    accent: 'text-blue-700 dark:text-blue-300',
     icon: '🔵'
   },
   [NodeCategory.PRIVATE]: {
-    background: 'bg-green-50',
-    border: 'border-green-500',
-    ring: 'ring-green-500',
-    accent: 'text-green-700',
+    background: 'bg-green-50 dark:bg-green-900/20',
+    border: 'border-green-500 dark:border-green-400',
+    ring: 'ring-green-500 dark:ring-green-400',
+    accent: 'text-green-700 dark:text-green-300',
     icon: '🟢'
   },
   [NodeCategory.PUBLIC]: {
-    background: 'bg-orange-50',
-    border: 'border-orange-500',
-    ring: 'ring-orange-500',
-    accent: 'text-orange-700',
+    background: 'bg-orange-50 dark:bg-orange-900/20',
+    border: 'border-orange-500 dark:border-orange-400',
+    ring: 'ring-orange-500 dark:ring-orange-400',
+    accent: 'text-orange-700 dark:text-orange-300',
     icon: '🟠'
   },
   [NodeCategory.SERVER]: {
-    background: 'bg-emerald-50',
-    border: 'border-emerald-500',
-    ring: 'ring-emerald-500',
-    accent: 'text-emerald-700',
+    background: 'bg-emerald-50 dark:bg-emerald-900/20',
+    border: 'border-emerald-500 dark:border-emerald-400',
+    ring: 'ring-emerald-500 dark:ring-emerald-400',
+    accent: 'text-emerald-700 dark:text-emerald-300',
     icon: '🖥️'
   },
   [NodeCategory.CLIENT]: {
-    background: 'bg-cyan-50',
-    border: 'border-cyan-500',
-    ring: 'ring-cyan-500',
-    accent: 'text-cyan-700',
+    background: 'bg-cyan-50 dark:bg-cyan-900/20',
+    border: 'border-cyan-500 dark:border-cyan-400',
+    ring: 'ring-cyan-500 dark:ring-cyan-400',
+    accent: 'text-cyan-700 dark:text-cyan-300',
     icon: '💻'
   },
   [NodeCategory.UNKNOWN]: {
-    background: 'bg-yellow-50',
-    border: 'border-yellow-500',
-    ring: 'ring-yellow-500',
-    accent: 'text-yellow-700',
+    background: 'bg-yellow-50 dark:bg-yellow-900/20',
+    border: 'border-yellow-500 dark:border-yellow-400',
+    ring: 'ring-yellow-500 dark:ring-yellow-400',
+    accent: 'text-yellow-700 dark:text-yellow-300',
     icon: '❓'
   }
 };

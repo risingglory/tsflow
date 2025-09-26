@@ -76,7 +76,7 @@ Set `TAILSCALE_API_URL=https://api.us.tailscale.com` if you need the US-specific
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
-| `TAILSCALE_TAILNET` | Your organization name | Yes | - |
+| `TAILSCALE_TAILNET` | Your organization name | No | - |
 | `TAILSCALE_API_URL` | Tailscale API endpoint URL | No | `https://api.tailscale.com` |
 | **OAuth Method** |
 | `TAILSCALE_OAUTH_CLIENT_ID` | OAuth client ID | Yes* | - |
@@ -106,8 +106,6 @@ services:
     environment:
       - TAILSCALE_OAUTH_CLIENT_ID=your-client-id
       - TAILSCALE_OAUTH_CLIENT_SECRET=your-client-secret
-      - TAILSCALE_TAILNET=your-organization
-      - PORT=8080
     restart: unless-stopped
 ```
 
@@ -121,8 +119,6 @@ services:
       - "8080:8080"
     environment:
       - TAILSCALE_API_KEY=your-api-key
-      - TAILSCALE_TAILNET=your-organization
-      - PORT=8080
     restart: unless-stopped
 ```
 
@@ -154,6 +150,11 @@ cd tsflow/k8s
 # Edit kustomization.yaml with your credentials
 kubectl apply -k .
 ```
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=rajsinghtech/tsflow&type=Date)](https://star-history.com/#rajsinghtech/tsflow&Date)
+
 ---
 
 Built with ❤️ for the Tailscale community

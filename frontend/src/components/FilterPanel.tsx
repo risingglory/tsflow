@@ -33,12 +33,12 @@ export default function FilterPanel() {
     <div className="p-4 space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">
-          <Filter className="h-5 w-5 text-gray-500" />
-          <h3 className="font-medium text-gray-900">Filters</h3>
+          <Filter className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+          <h3 className="font-medium text-gray-900 dark:text-gray-100">Filters</h3>
         </div>
         <button
           onClick={resetFilter}
-          className="text-xs text-gray-500 hover:text-gray-700 flex items-center space-x-1"
+          className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center space-x-1"
         >
           <X className="h-3 w-3" />
           <span>Reset</span>
@@ -47,7 +47,7 @@ export default function FilterPanel() {
 
       {/* Traffic Threshold */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Traffic Threshold
         </label>
         <div className="flex items-center space-x-2">
@@ -63,7 +63,7 @@ export default function FilterPanel() {
             })}
             className="input text-xs w-16"
           />
-          <span className="text-xs text-gray-500">-</span>
+          <span className="text-xs text-gray-500 dark:text-gray-400">-</span>
           <input
             type="number"
             placeholder="Max"
@@ -96,7 +96,7 @@ export default function FilterPanel() {
 
       {/* Protocols */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Protocols
         </label>
         <div className="space-y-2 max-h-32 overflow-y-auto">
@@ -106,9 +106,9 @@ export default function FilterPanel() {
                 type="checkbox"
                 checked={filter.protocols.includes(protocol.value)}
                 onChange={() => handleProtocolToggle(protocol.value)}
-                className="rounded border-gray-300 text-primary-600 text-xs"
+                className="rounded border-gray-300 dark:border-gray-600 text-primary-600 text-xs"
               />
-              <span className="ml-2 text-gray-700">{protocol.label}</span>
+              <span className="ml-2 text-gray-700 dark:text-gray-300">{protocol.label}</span>
             </label>
           ))}
         </div>
@@ -116,7 +116,7 @@ export default function FilterPanel() {
 
       {/* Common Ports */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Common Ports
         </label>
         <div className="space-y-2 max-h-32 overflow-y-auto">
@@ -126,9 +126,9 @@ export default function FilterPanel() {
                 type="checkbox"
                 checked={filter.ports.includes(port.value)}
                 onChange={() => handlePortToggle(port.value)}
-                className="rounded border-gray-300 text-primary-600 text-xs"
+                className="rounded border-gray-300 dark:border-gray-600 text-primary-600 text-xs"
               />
-              <span className="ml-2 text-gray-700">{port.label}</span>
+              <span className="ml-2 text-gray-700 dark:text-gray-300">{port.label}</span>
             </label>
           ))}
         </div>
@@ -136,7 +136,7 @@ export default function FilterPanel() {
 
       {/* Custom Search */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Search
         </label>
         <input
@@ -146,28 +146,28 @@ export default function FilterPanel() {
           onChange={(e) => setFilter({ search: e.target.value })}
           className="input text-xs w-full"
         />
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
           Use filters like device:name, protocol:tcp, port:22
         </p>
       </div>
 
       {/* Active Filters Summary */}
       {(filter.protocols.length > 0 || filter.ports.length > 0 || filter.search) && (
-        <div className="pt-4 border-t border-gray-200">
-          <h4 className="text-xs font-medium text-gray-700 mb-2">Active Filters</h4>
+        <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+          <h4 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Active Filters</h4>
           <div className="space-y-1">
             {filter.protocols.length > 0 && (
-              <div className="text-xs text-gray-600">
+              <div className="text-xs text-gray-600 dark:text-gray-400">
                 Protocols: {filter.protocols.map(p => PROTOCOL_NAMES[parseInt(p)]).join(', ')}
               </div>
             )}
             {filter.ports.length > 0 && (
-              <div className="text-xs text-gray-600">
+              <div className="text-xs text-gray-600 dark:text-gray-400">
                 Ports: {filter.ports.join(', ')}
               </div>
             )}
             {filter.search && (
-              <div className="text-xs text-gray-600">
+              <div className="text-xs text-gray-600 dark:text-gray-400">
                 Search: "{filter.search}"
               </div>
             )}

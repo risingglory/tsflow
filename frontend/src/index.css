@@ -46,15 +46,15 @@
   }
 
   .badge-online {
-    @apply badge bg-green-100 text-green-800;
+    @apply badge bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300;
   }
 
   .badge-offline {
-    @apply badge bg-red-100 text-red-800;
+    @apply badge bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300;
   }
 
   .badge-warning {
-    @apply badge bg-yellow-100 text-yellow-800;
+    @apply badge bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300;
   }
 }
 
@@ -87,6 +87,36 @@
 
 .dark ::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
+}
+
+/* React Flow Controls Dark Mode Styles */
+.react-flow__controls {
+  @apply bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700;
+}
+
+.react-flow__controls-button {
+  @apply bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700;
+}
+
+.react-flow__controls-button svg {
+  @apply fill-gray-700 dark:fill-gray-300;
+}
+
+.react-flow__controls-button:hover svg {
+  @apply fill-gray-900 dark:fill-gray-100;
+}
+
+/* MiniMap Dark Mode Styles */
+.react-flow__minimap {
+  @apply bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700;
+}
+
+.react-flow__minimap-mask {
+  @apply fill-gray-400 dark:fill-gray-600;
+}
+
+.react-flow__minimap-node {
+  @apply stroke-gray-300 dark:stroke-gray-600;
 }
 
 /* Network visualization styles */
