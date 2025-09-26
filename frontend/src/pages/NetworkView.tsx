@@ -1424,18 +1424,44 @@ const NetworkView: React.FC = () => {
           setSelectedLink(null)
         }}
         onSelectLog={(logEntry) => {
-          // Highlight the corresponding nodes in the graph
-          const srcNode = nodes.find(n => 
+          // First, find the source and destination nodes
+          const srcNode = nodes.find(n =>
             n.ips?.includes(logEntry.srcIP) || n.ip === logEntry.srcIP || n.displayName === logEntry.srcDevice
           )
-          const dstNode = nodes.find(n => 
+          const dstNode = nodes.find(n =>
             n.ips?.includes(logEntry.dstIP) || n.ip === logEntry.dstIP || n.displayName === logEntry.dstDevice
           )
-          
-          if (srcNode) {
+
+          // Try to find the corresponding link/edge between these nodes
+          if (srcNode && dstNode) {
+            const matchingLink = links.find(link => {
+              const linkSourceId = typeof link.source === 'string' ? link.source : link.source.id
+              const linkTargetId = typeof link.target === 'string' ? link.target : link.target.id
+
+              // Check both directions (src->dst or dst->src)
+              return (
+                (linkSourceId === srcNode.id && linkTargetId === dstNode.id) ||
+                (linkSourceId === dstNode.id && linkTargetId === srcNode.id)
+              )
+            })
+
+            if (matchingLink) {
+              // Select the link/edge instead of a node
+              setSelectedLink(matchingLink)
+              setSelectedNode(null)
+            } else {
+              // If no link found, fall back to selecting the source node
+              setSelectedNode(srcNode)
+              setSelectedLink(null)
+            }
+          } else if (srcNode) {
+            // Only source node found
             setSelectedNode(srcNode)
+            setSelectedLink(null)
           } else if (dstNode) {
+            // Only destination node found
             setSelectedNode(dstNode)
+            setSelectedLink(null)
           }
         }}
       />

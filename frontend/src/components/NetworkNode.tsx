@@ -37,14 +37,6 @@ const WELL_KNOWN_PORTS: Record<number, string> = {
   53: 'DNS',
   80: 'HTTP',
   443: 'HTTPS',
-  3389: 'RDP',
-  5432: 'PostgreSQL',
-  3306: 'MySQL',
-  6379: 'Redis',
-  8080: 'HTTP-Alt',
-  8443: 'HTTPS-Alt',
-  9090: 'Prometheus',
-  27017: 'MongoDB',
 };
 
 const NetworkNode = memo<NodeProps>(({ data, selected }) => {
