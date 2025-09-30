@@ -354,7 +354,11 @@ const NetworkView: React.FC = () => {
     }
     
     // Validate that we have actual log entries
-    return logsArray.filter(log => log && typeof log === 'object' && 'logged' in log)
+    const validLogs = logsArray.filter(log => {
+      return log && typeof log === 'object' && ('logged' in log || 'Logged' in log)
+    })
+    
+    return validLogs
   }, [networkLogsData])
 
   // Set default date range to show most recent data (last 5 minutes)

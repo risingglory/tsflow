@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rajsinghtech/tsflow/backend/internal/services"
+	tailscale "tailscale.com/client/tailscale/v2"
 )
 
 type Handlers struct {
@@ -107,8 +108,12 @@ func (h *Handlers) GetNetworkLogs(c *gin.Context) {
 	}
 
 	duration := et.Sub(st)
-	if duration > 24*time.Hour {
-		chunks, err := h.tailscaleService.GetNetworkLogsChunkedParallel(start, end, 6*time.Hour, 3)
+	// Use chunking for queries longer than 7 days to prevent response size issues
+	if duration > 7*24*time.Hour {
+		// Use smaller chunks and fewer parallel requests for 30+ day queries
+		chunkSize := 3 * 24 * time.Hour // 3-day chunks instead of 6-hour
+		maxParallel := 2                // Reduce parallel requests to prevent memory issues
+		chunks, err := h.tailscaleService.GetNetworkLogsChunkedParallel(start, end, chunkSize, maxParallel)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "Failed to fetch network logs",
@@ -119,25 +124,66 @@ func (h *Handlers) GetNetworkLogs(c *gin.Context) {
 		}
 
 		var allLogs []interface{}
+		maxLogs := 10000 // Limit total logs to prevent memory issues
+		
 		for _, chunk := range chunks {
 			if logsArray, ok := chunk.([]interface{}); ok {
+				if len(allLogs)+len(logsArray) > maxLogs {
+					// Truncate if we're approaching the limit
+					remaining := maxLogs - len(allLogs)
+					if remaining > 0 {
+						allLogs = append(allLogs, logsArray[:remaining]...)
+					}
+					break
+				}
 				allLogs = append(allLogs, logsArray...)
 			} else if logsMap, ok := chunk.(map[string]interface{}); ok {
 				if logs, exists := logsMap["logs"]; exists {
 					if logsArray, ok := logs.([]interface{}); ok {
+						if len(allLogs)+len(logsArray) > maxLogs {
+							// Truncate if we're approaching the limit
+							remaining := maxLogs - len(allLogs)
+							if remaining > 0 {
+								allLogs = append(allLogs, logsArray[:remaining]...)
+							}
+							break
+						}
 						allLogs = append(allLogs, logsArray...)
+					} else if logsArray, ok := logs.([]tailscale.NetworkFlowLog); ok {
+						// Convert []NetworkFlowLog to []interface{}
+						for _, log := range logsArray {
+							allLogs = append(allLogs, log)
+						}
 					}
 				}
 			}
 		}
-
+		
+		// If we have too many logs, sample them to prevent response size issues
+		finalLogs := allLogs
+		if len(allLogs) > 50000 {
+			// Sample every Nth log to get approximately 50,000 logs
+			sampleRate := len(allLogs) / 50000
+			if sampleRate < 1 {
+				sampleRate = 1
+			}
+			
+			sampledLogs := make([]interface{}, 0, 50000)
+			for i := 0; i < len(allLogs); i += sampleRate {
+				sampledLogs = append(sampledLogs, allLogs[i])
+			}
+			finalLogs = sampledLogs
+		}
+		
 		c.JSON(http.StatusOK, gin.H{
-			"logs": allLogs,
+			"logs": finalLogs,
 			"metadata": gin.H{
 				"chunked":     true,
 				"chunks":      len(chunks),
 				"duration":    duration.String(),
 				"totalLogs":   len(allLogs),
+				"sampled":     len(finalLogs) < len(allLogs),
+				"sampleRate":  len(allLogs) / len(finalLogs),
 			},
 		})
 		return
@@ -152,8 +198,16 @@ func (h *Handlers) GetNetworkLogs(c *gin.Context) {
 		return
 	}
 
-	log.Printf("SUCCESS GetNetworkLogs: returned logs for %s to %s", start, end)
 	c.JSON(http.StatusOK, logs)
+}
+
+// Helper function to get map keys
+func getMapKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func (h *Handlers) GetNetworkMap(c *gin.Context) {

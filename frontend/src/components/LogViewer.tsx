@@ -112,35 +112,41 @@ const processLogsWorker = (networkLogs: NetworkFlowLog[], devices: Device[]) => 
           const log = logs[i]
           const processTraffic = (traffic: TrafficFlow[], type: 'virtual' | 'subnet' | 'physical') => {
             traffic.forEach((flow) => {
-              const srcIP = extractIP(flow.src)
-              const dstIP = extractIP(flow.dst)
-              const timestamp = new Date(log.logged)
+              // Handle both capitalized and lowercase field names
+              const srcIP = extractIP((flow as any).Src || (flow as any).src)
+              const dstIP = extractIP((flow as any).Dst || (flow as any).dst)
+              const timestamp = new Date((log as any).Logged || (log as any).logged)
               
               entries.push({
-                id: `${log.nodeId}-${entryId++}`,
-                timestamp: log.logged,
+                id: `${(log as any).NodeID || (log as any).nodeId}-${entryId++}`,
+                timestamp: (log as any).Logged || (log as any).logged,
                 timestampMs: timestamp.getTime(),
-                nodeId: log.nodeId,
+                nodeId: (log as any).NodeID || (log as any).nodeId,
                 srcDevice: getDeviceName(srcIP, devices),
                 dstDevice: getDeviceName(dstIP, devices),
                 srcIP,
                 dstIP,
-                srcPort: extractPort(flow.src) || undefined,
-                dstPort: extractPort(flow.dst) || undefined,
-                protocol: getProtocolName(flow.proto),
+                srcPort: extractPort((flow as any).Src || (flow as any).src) || undefined,
+                dstPort: extractPort((flow as any).Dst || (flow as any).dst) || undefined,
+                protocol: getProtocolName((flow as any).Proto || (flow as any).proto),
                 trafficType: type,
-                txBytes: flow.txBytes || 0,
-                rxBytes: flow.rxBytes || 0,
-                txPackets: flow.txPackets || 0,
-                rxPackets: flow.rxPackets || 0,
+                txBytes: (flow as any).TxBytes || (flow as any).txBytes || 0,
+                rxBytes: (flow as any).RxBytes || (flow as any).rxBytes || 0,
+                txPackets: (flow as any).TxPkts || (flow as any).txPackets || 0,
+                rxPackets: (flow as any).RxPkts || (flow as any).rxPackets || 0,
                 tags: []
               })
             })
           }
 
-          if (log.virtualTraffic) processTraffic(log.virtualTraffic, 'virtual')
-          if (log.subnetTraffic) processTraffic(log.subnetTraffic, 'subnet')
-          if (log.physicalTraffic) processTraffic(log.physicalTraffic, 'physical')
+          // Handle both capitalized and lowercase field names
+          const virtualTraffic = (log as any).VirtualTraffic || (log as any).virtualTraffic
+          const subnetTraffic = (log as any).SubnetTraffic || (log as any).subnetTraffic
+          const physicalTraffic = (log as any).PhysicalTraffic || (log as any).physicalTraffic
+
+          if (virtualTraffic) processTraffic(virtualTraffic, 'virtual')
+          if (subnetTraffic) processTraffic(subnetTraffic, 'subnet')
+          if (physicalTraffic) processTraffic(physicalTraffic, 'physical')
         }
 
         if (endIndex < logs.length) {
