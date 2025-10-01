@@ -111,8 +111,8 @@ func (h *Handlers) GetNetworkLogs(c *gin.Context) {
 	// Use chunking for queries longer than 7 days to prevent response size issues
 	if duration > 7*24*time.Hour {
 		// Use smaller chunks and fewer parallel requests for 30+ day queries
-		chunkSize := 3 * 24 * time.Hour // 3-day chunks instead of 6-hour
-		maxParallel := 2                // Reduce parallel requests to prevent memory issues
+		chunkSize := 24 * time.Hour // 1-day chunks to prevent timeouts
+		maxParallel := 2            // Reduce parallel requests to prevent memory issues
 		chunks, err := h.tailscaleService.GetNetworkLogsChunkedParallel(start, end, chunkSize, maxParallel)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{

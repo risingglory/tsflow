@@ -87,7 +87,7 @@ func NewTailscaleService(cfg *config.Config) *TailscaleService {
 	} else if cfg.TailscaleAPIKey != "" {
 		ts.apiKey = cfg.TailscaleAPIKey
 		ts.client = &http.Client{
-			Timeout: 15 * time.Minute, // Increased timeout for large requests
+			Timeout: 30 * time.Minute, // Much longer timeout for large requests
 		}
 		ts.tsClient = &tailscale.Client{
 			APIKey:  cfg.TailscaleAPIKey,
@@ -96,7 +96,7 @@ func NewTailscaleService(cfg *config.Config) *TailscaleService {
 		ts.useOAuth = false
 	} else {
 		ts.client = &http.Client{
-			Timeout: 15 * time.Minute, // Increased timeout for large requests
+			Timeout: 30 * time.Minute, // Much longer timeout for large requests
 		}
 	}
 
@@ -257,10 +257,10 @@ func (ts *TailscaleService) GetNetworkLogs(start, end string) (interface{}, erro
 	
 	// For smaller ranges, use the original approach
 	if ts.tsClient != nil {
-		// Use longer timeout for larger time ranges
+		// Use much longer timeout for larger time ranges
 		timeoutDuration := 10 * time.Minute
 		if endTime.Sub(startTime) > 7*24*time.Hour {
-			timeoutDuration = 20 * time.Minute // Longer timeout for 30+ day queries
+			timeoutDuration = 30 * time.Minute // Much longer timeout for 30+ day queries
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
 		defer cancel()
@@ -292,10 +292,10 @@ func (ts *TailscaleService) GetNetworkLogs(start, end string) (interface{}, erro
 		endpoint += fmt.Sprintf("?start=%s&end=%s", url.QueryEscape(start), url.QueryEscape(end))
 	}
 
-	// Use longer timeout for larger time ranges
+	// Use much longer timeout for larger time ranges
 	timeoutDuration := 10 * time.Minute
 	if endTime.Sub(startTime) > 7*24*time.Hour {
-		timeoutDuration = 20 * time.Minute // Longer timeout for 30+ day queries
+		timeoutDuration = 30 * time.Minute // Much longer timeout for 30+ day queries
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
 	defer cancel()
