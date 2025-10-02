@@ -87,7 +87,7 @@ func NewTailscaleService(cfg *config.Config) *TailscaleService {
 	} else if cfg.TailscaleAPIKey != "" {
 		ts.apiKey = cfg.TailscaleAPIKey
 		ts.client = &http.Client{
-			Timeout: 5 * time.Minute,
+			Timeout: 30 * time.Minute, // Much longer timeout for large requests
 		}
 		ts.tsClient = &tailscale.Client{
 			APIKey:  cfg.TailscaleAPIKey,
@@ -96,7 +96,7 @@ func NewTailscaleService(cfg *config.Config) *TailscaleService {
 		ts.useOAuth = false
 	} else {
 		ts.client = &http.Client{
-			Timeout: 5 * time.Minute,
+			Timeout: 30 * time.Minute, // Much longer timeout for large requests
 		}
 	}
 
@@ -243,19 +243,27 @@ func (ts *TailscaleService) GetDevices() (*DevicesResponse, error) {
 }
 
 func (ts *TailscaleService) GetNetworkLogs(start, end string) (interface{}, error) {
+	// Parse time range to determine if we need chunking
+	startTime, err := time.Parse(time.RFC3339, start)
+	if err != nil {
+		return nil, fmt.Errorf("invalid start time: %w", err)
+	}
+	
+	endTime, err := time.Parse(time.RFC3339, end)
+	if err != nil {
+		return nil, fmt.Errorf("invalid end time: %w", err)
+	}
+	
+	
+	// For smaller ranges, use the original approach
 	if ts.tsClient != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		// Use much longer timeout for larger time ranges
+		timeoutDuration := 10 * time.Minute
+		if endTime.Sub(startTime) > 7*24*time.Hour {
+			timeoutDuration = 30 * time.Minute // Much longer timeout for 30+ day queries
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
 		defer cancel()
-		
-		startTime, err := time.Parse(time.RFC3339, start)
-		if err != nil {
-			return nil, fmt.Errorf("invalid start time: %w", err)
-		}
-		
-		endTime, err := time.Parse(time.RFC3339, end)
-		if err != nil {
-			return nil, fmt.Errorf("invalid end time: %w", err)
-		}
 		
 		var logs []tailscale.NetworkFlowLog
 		
@@ -271,6 +279,7 @@ func (ts *TailscaleService) GetNetworkLogs(start, end string) (interface{}, erro
 			return nil, fmt.Errorf("failed to fetch network logs from tailscale client: %w", err)
 		}
 		
+		
 		return map[string]interface{}{
 			"logs": logs,
 		}, nil
@@ -283,7 +292,12 @@ func (ts *TailscaleService) GetNetworkLogs(start, end string) (interface{}, erro
 		endpoint += fmt.Sprintf("?start=%s&end=%s", url.QueryEscape(start), url.QueryEscape(end))
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	// Use much longer timeout for larger time ranges
+	timeoutDuration := 10 * time.Minute
+	if endTime.Sub(startTime) > 7*24*time.Hour {
+		timeoutDuration = 30 * time.Minute // Much longer timeout for 30+ day queries
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
 	defer cancel()
 
 	body, err := ts.makeRequest(ctx, endpoint)
@@ -296,7 +310,17 @@ func (ts *TailscaleService) GetNetworkLogs(start, end string) (interface{}, erro
 		return nil, fmt.Errorf("failed to unmarshal network logs response: %w", err)
 	}
 
-	return response, nil
+	// Ensure consistent response format
+	if responseMap, ok := response.(map[string]interface{}); ok {
+		if logs, exists := responseMap["logs"]; exists {
+			return map[string]interface{}{
+				"logs": logs,
+			}, nil
+		}
+	}
+	return map[string]interface{}{
+		"logs": response,
+	}, nil
 }
 
 // GetNetworkLogsChunked retrieves network logs in chunks for large time ranges
@@ -659,4 +683,13 @@ func (ts *TailscaleService) GetStaticRecords() (map[string]StaticRecordInfo, err
 	}
 	
 	return response.Records, nil
+}
+
+// Helper function to get map keys for debugging
+func getMapKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
